@@ -104,29 +104,44 @@
 
 /* Red Hat Color Scheme - Improved for readability */
 :root {
-  --rh-red: #cc0000;
-  --rh-dark-red: #a30000;
-  --rh-gray: #f5f5f5;
-  --rh-dark-gray: #333333;
-  --rh-medium-gray: #6a6e73;
-  --rh-light-gray: #e0e0e0;
+  /* Red Hat Brand Colors */
+  --rh-red: #ee0000;
+  --rh-dark-red: #cc0000;
   --rh-white: #ffffff;
-  --rh-blue: #0066cc;
-  --success-green: #3f9c35;
-  --warning-yellow: #f0ab00;
-  --error-red: #cc0000;
+  --rh-black: #000000;
+  --rh-gray: #f8f9fa;
+  --rh-medium-gray: #6c757d;
+  --rh-dark-gray: #343a40;
+  --rh-yellow: #ffd700;
+
+  /* Additional Colors */
+  --primary-purple: #7c3aed;
+  --primary-purple-dark: #6d28d9;
+  --success-green: #10b981;
+  --error-red: #ef4444;
+  --warning-yellow: #f59e0b;
+  --blue: #3b82f6;
+  --dark-gray: #1f2937;
+  --medium-gray: #6b7280;
+  --light-gray: #e5e7eb;
+  --white: #ffffff;
+
+  /* Font Families - Standardized */
+  --font-family-primary: 'Red Hat Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --font-family-mono: 'Courier New', monospace;
   
-  /* Red Hat specific colors - improved contrast */
-  --rh-green: #3f9c35;
-  --rh-yellow: #f0ab00;
-  --rh-white: #ffffff;
-  --rh-light-gray: #f5f5f5;
-  --rh-dark-gray: #333333;
-  
-  /* Toast colors */
-  --toastify-color-light: var(--rh-white);
-  --toastify-color-success: var(--rh-green);
-  --toastify-color-error: var(--rh-red);
+  /* Font Weights */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+  --font-weight-black: 900;
+
+  /* Toastify Colors */
+  --toastify-color-success: var(--success-green);
+  --toastify-color-error: var(--error-red);
   --toastify-color-warning: var(--rh-yellow);
 }
 
@@ -136,7 +151,7 @@
 }
 
 body {
-  font-family: 'Red Hat Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-family-primary);
   margin: 0;
   padding: 0;
   background: var(--rh-gray);
@@ -349,7 +364,7 @@ body {
 .log-content {
   background: #1e1e1e;
   color: #f8f8f2;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 14px;
   line-height: 1.5;
   padding: 1rem;
@@ -586,7 +601,7 @@ tr:hover td {
 
 body .Toastify__toast,
 body .Toastify__toast-body {
-  font-family: 'Red Hat Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 0.9rem;
 }
 
@@ -684,14 +699,14 @@ body .Toastify__toast-body {
   max-width: 120px;
 }
 
-/* Modern Side Menu Layout */
+/* Optimized Side Menu Layout */
 .main-layout {
   display: flex;
   min-height: 100vh;
   background: var(--rh-gray);
 }
 
-/* Collapsible Sidebar Modern Styles */
+/* Enhanced Collapsible Sidebar with Performance Optimizations */
 .side-menu {
   display: flex;
   flex-direction: column;
@@ -706,7 +721,10 @@ body .Toastify__toast-body {
   z-index: 10;
   transition: width 0.25s cubic-bezier(.4,0,.2,1);
   position: relative;
+  will-change: width;
+  transform: translateZ(0); /* Force hardware acceleration */
 }
+
 .side-menu.collapsed {
   width: 64px;
   min-width: 64px;
@@ -714,6 +732,7 @@ body .Toastify__toast-body {
   align-items: center;
 }
 
+/* Enhanced Sidebar Toggle Button */
 .sidebar-toggle {
   background: none;
   border: none;
@@ -722,13 +741,24 @@ body .Toastify__toast-body {
   cursor: pointer;
   margin: 0 0 1.5rem 0.5rem;
   align-self: flex-end;
-  transition: color 0.2s;
+  transition: color 0.2s, transform 0.2s;
   outline: none;
-}
-.sidebar-toggle:hover {
-  color: var(--rh-red);
+  padding: 0.5rem;
+  border-radius: 8px;
+  user-select: none;
 }
 
+.sidebar-toggle:hover {
+  color: var(--rh-red);
+  transform: scale(1.1);
+}
+
+.sidebar-toggle:focus {
+  outline: 2px solid var(--rh-red);
+  outline-offset: 2px;
+}
+
+/* Optimized Side Menu Items with Better Performance */
 .side-menu-item {
   display: flex;
   align-items: center;
@@ -747,21 +777,32 @@ body .Toastify__toast-body {
   white-space: nowrap;
   border: 2px solid transparent;
   overflow: hidden;
+  will-change: transform, background-color;
+  transform: translateZ(0);
+  user-select: none;
 }
+
 .side-menu.collapsed .side-menu-item {
   justify-content: center;
   padding: 1.1rem 0.5rem;
   border-radius: 12px;
   margin: 0.25rem 0.5rem;
 }
+
 .side-menu-item.active, .side-menu-item:hover {
   background: linear-gradient(135deg, var(--rh-red) 0%, #e63946 100%);
   color: var(--rh-white);
   box-shadow: 0 4px 16px rgba(204, 0, 0, 0.25);
-  transform: translateX(4px);
+  transform: translateX(4px) translateZ(0);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.side-menu-item:focus {
+  outline: 2px solid var(--rh-red);
+  outline-offset: 2px;
+}
+
+/* Enhanced Side Menu Labels */
 .side-menu-label {
   display: inline-block;
   white-space: nowrap;
@@ -770,22 +811,31 @@ body .Toastify__toast-body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 180px;
+  will-change: opacity, width;
 }
+
 .side-menu.collapsed .side-menu-label {
   opacity: 0;
   width: 0;
   pointer-events: none;
 }
 
+/* Optimized Side Menu Icons */
 .side-menu-icon {
   font-size: 1.4em;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 32px;
+  transition: transform 0.2s;
+  will-change: transform;
 }
 
-/* Tooltip for collapsed state */
+.side-menu-item:hover .side-menu-icon {
+  transform: scale(1.1);
+}
+
+/* Enhanced Tooltip for Collapsed State */
 .side-menu.collapsed .side-menu-item[title]:hover::after {
   content: attr(title);
   position: absolute;
@@ -802,19 +852,35 @@ body .Toastify__toast-body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   opacity: 1;
   pointer-events: none;
+  animation: tooltipFadeIn 0.2s ease-out;
 }
 
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* Optimized Main Content Area */
 .main-content {
   flex: 1 1 0;
   padding: 2.5rem 2rem;
   min-width: 0;
   transition: padding 0.25s;
+  will-change: padding;
 }
 
+/* Enhanced Mobile Responsiveness */
 @media (max-width: 900px) {
   .main-layout {
     flex-direction: column;
   }
+  
   .side-menu {
     flex-direction: row;
     width: 100vw;
@@ -832,17 +898,89 @@ body .Toastify__toast-body {
     background: var(--rh-white);
     transition: transform 0.3s cubic-bezier(.4,0,.2,1);
     transform: translateY(-100%);
+    will-change: transform;
   }
+  
   .side-menu.open {
     transform: translateY(0);
   }
+  
   .side-menu-item {
     border-radius: 12px;
     padding: 0.7rem 1.2rem;
     font-size: 0.98rem;
     margin: 0 0.2rem;
+    flex-shrink: 0;
   }
+  
+  .side-menu.collapsed .side-menu-item {
+    padding: 0.7rem 1rem;
+    margin: 0 0.1rem;
+  }
+  
   .main-content {
     padding: 1.2rem 0.5rem;
+    margin-top: 60px; /* Space for fixed mobile menu */
   }
+  
+  /* Mobile menu toggle button */
+  .mobile-menu-toggle {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 1001;
+    background: var(--rh-red);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: transform 0.2s;
+  }
+  
+  .mobile-menu-toggle:hover {
+    transform: scale(1.1);
+  }
+}
+
+/* Accessibility Improvements */
+@media (prefers-reduced-motion: reduce) {
+  .side-menu,
+  .side-menu-item,
+  .side-menu-label,
+  .side-menu-icon,
+  .sidebar-toggle {
+    transition: none;
+  }
+  
+  .side-menu-item:hover {
+    transform: none;
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .side-menu-item {
+    border: 2px solid var(--rh-dark-gray);
+  }
+  
+  .side-menu-item.active,
+  .side-menu-item:hover {
+    border-color: var(--rh-red);
+    background: var(--rh-red);
+  }
+}
+
+/* Focus Visible for Better Accessibility */
+.side-menu-item:focus-visible {
+  outline: 3px solid var(--rh-red);
+  outline-offset: 2px;
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 3px solid var(--rh-red);
+  outline-offset: 2px;
 } 
