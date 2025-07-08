@@ -19,6 +19,15 @@ const LoadingSpinner = () => (
   </div>
 );
 
+// Hamburger Icon Component
+const HamburgerIcon = ({ isOpen }) => (
+  <div className={`hamburger-icon ${isOpen ? 'open' : ''}`}>
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+);
+
 // Memoized Side Menu Item Component
 const SideMenuItem = React.memo(({ 
   to, 
@@ -74,23 +83,15 @@ const SideMenuContent = React.memo(({
   toggleSidebar 
 }) => {
   const location = useLocation();
-  
-  const handleItemClick = useCallback((path) => {
-    // Navigate programmatically
+  const navigate = (path) => {
     window.location.href = path;
-  }, []);
+  };
 
   return (
     <nav className={`side-menu${sidebarCollapsed ? ' collapsed' : ''}`}>
-      <button 
-        className="sidebar-toggle" 
-        onClick={toggleSidebar} 
-        aria-label={sidebarCollapsed ? 'Expand menu' : 'Collapse menu'}
-        aria-expanded={!sidebarCollapsed}
-      >
-        {sidebarCollapsed ? <span>&#x25B6;</span> : <span>&#x25C0;</span>}
-      </button>
-      
+      <div className="side-menu-item side-menu-hamburger" tabIndex={0} role="button" aria-label={sidebarCollapsed ? 'Expand menu' : 'Collapse menu'} aria-expanded={!sidebarCollapsed} onClick={toggleSidebar}>
+        <span className="side-menu-icon"><HamburgerIcon isOpen={!sidebarCollapsed} /></span>
+      </div>
       {navigationItems.map((item) => (
         <SideMenuItem
           key={item.path}
@@ -99,7 +100,7 @@ const SideMenuContent = React.memo(({
           label={item.label}
           isActive={location.pathname === item.path}
           isCollapsed={sidebarCollapsed}
-          onClick={() => handleItemClick(item.path)}
+          onClick={() => navigate(item.path)}
         />
       ))}
     </nav>

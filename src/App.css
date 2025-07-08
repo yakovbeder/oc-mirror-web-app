@@ -639,7 +639,7 @@ body .Toastify__toast-body {
 
 /* Enhanced Header */
 .header {
-  background: linear-gradient(135deg, var(--primary-purple) 0%, var(--primary-purple-dark) 100%);
+  background: var(--rh-red);
   color: var(--white);
   padding: 2rem 0;
   margin-bottom: 2rem;
@@ -732,30 +732,65 @@ body .Toastify__toast-body {
   align-items: center;
 }
 
+/* Modern Hamburger Icon */
+.hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.hamburger-icon span {
+  display: block;
+  width: 22px;
+  height: 3px;
+  background-color: var(--rh-dark-gray);
+  border-radius: 2px;
+  margin: 2.5px 0;
+  transition: all 0.3s ease;
+  transform-origin: center;
+}
+
+.hamburger-icon.open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.hamburger-icon.open span:nth-child(2) {
+  opacity: 0;
+}
+.hamburger-icon.open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
 /* Enhanced Sidebar Toggle Button */
 .sidebar-toggle {
   background: none;
   border: none;
-  color: var(--rh-dark-gray);
-  font-size: 1.5rem;
   cursor: pointer;
-  margin: 0 0 1.5rem 0.5rem;
   align-self: flex-end;
-  transition: color 0.2s, transform 0.2s;
+  transition: all 0.3s ease;
   outline: none;
-  padding: 0.5rem;
+  padding: 0.75rem;
   border-radius: 8px;
   user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  position: relative;
+  overflow: hidden;
+  margin: 0;
 }
-
-.sidebar-toggle:hover {
-  color: var(--rh-red);
-  transform: scale(1.1);
-}
-
-.sidebar-toggle:focus {
-  outline: 2px solid var(--rh-red);
-  outline-offset: 2px;
+.sidebar-toggle:hover,
+.sidebar-toggle:focus,
+.sidebar-toggle:focus-visible {
+  background: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 /* Optimized Side Menu Items with Better Performance */
