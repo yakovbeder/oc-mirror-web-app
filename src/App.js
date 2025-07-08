@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy, useMemo, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
@@ -80,13 +80,10 @@ SideMenuItem.displayName = 'SideMenuItem';
 const SideMenuContent = React.memo(({ 
   navigationItems, 
   sidebarCollapsed, 
-  toggleSidebar 
+  toggleSidebar,
+  navigate
 }) => {
   const location = useLocation();
-  const navigate = (path) => {
-    window.location.href = path;
-  };
-
   return (
     <nav className={`side-menu${sidebarCollapsed ? ' collapsed' : ''}`}>
       <div className="side-menu-item side-menu-hamburger" tabIndex={0} role="button" aria-label={sidebarCollapsed ? 'Expand menu' : 'Collapse menu'} aria-expanded={!sidebarCollapsed} onClick={toggleSidebar}>
@@ -108,6 +105,34 @@ const SideMenuContent = React.memo(({
 });
 
 SideMenuContent.displayName = 'SideMenuContent';
+
+// AppLayout component to use useNavigate inside Router context
+function AppLayout({ navigationItems, sidebarCollapsed, toggleSidebar }) {
+  const navigate = useNavigate();
+  return (
+    <div className="main-layout">
+      <SideMenuContent 
+        navigationItems={navigationItems}
+        sidebarCollapsed={sidebarCollapsed}
+        toggleSidebar={toggleSidebar}
+        navigate={navigate}
+      />
+      <div className="main-content container">
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+            {navigationItems.map((item) => (
+              <Route 
+                key={item.path} 
+                path={item.path} 
+                element={<item.component />} 
+              />
+            ))}
+          </Routes>
+        </Suspense>
+      </div>
+    </div>
+  );
+}
 
 // Main App Component
 function App() {
@@ -164,29 +189,11 @@ function App() {
             </div>
           </div>
         </header>
-
-        <div className="main-layout">
-          <SideMenuContent 
-            navigationItems={navigationItems}
-            sidebarCollapsed={sidebarCollapsed}
-            toggleSidebar={toggleSidebar}
-          />
-
-          <div className="main-content container">
-            <Suspense fallback={<LoadingSpinner />}>
-              <Routes>
-                {navigationItems.map((item) => (
-                  <Route 
-                    key={item.path} 
-                    path={item.path} 
-                    element={<item.component />} 
-                  />
-                ))}
-              </Routes>
-            </Suspense>
-          </div>
-        </div>
-
+        <AppLayout
+          navigationItems={navigationItems}
+          sidebarCollapsed={sidebarCollapsed}
+          toggleSidebar={toggleSidebar}
+        />
         <ToastContainer
           position="top-right"
           autoClose={5000}
