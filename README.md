@@ -207,6 +207,14 @@ This application is specifically designed for **oc-mirror v2**, which includes:
 - System preferences
 - Maintenance tools
 
+## 📸 Screenshots
+
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.jpg)
+
+### Mirror Configuration
+![Mirror Configuration](docs/screenshots/mirror-configuration.jpg)
+
 ## 🛠️ Development
 
 ### Prerequisites
