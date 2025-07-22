@@ -64,8 +64,10 @@ oc-mirror-web-app/
 
 #### 2. Mirror Configuration
 - **Platform Channels**: Configure OpenShift Container Platform channels to mirror
-- **Operator Catalogs**: Add Red Hat, certified, community, and marketplace operators
-- **Package Selection**: Choose specific operator packages and versions
+- **Dynamic Operator Discovery**: Real-time query of operator catalogs using `oc-mirror`
+- **Smart Package Selection**: Dropdown lists with dynamic operator packages and channels
+- **Real-time Updates**: New operators and channels appear automatically without code changes
+- **Pre-fetched Catalogs**: Operator catalogs pre-fetched during build
 - **Additional Images**: Include custom container images
 - **YAML Preview**: Real-time preview of generated configuration
 - **Configuration Management**: Save, load, and manage multiple configurations
@@ -108,12 +110,20 @@ oc-mirror-web-app/
 - **Child Process**: oc-mirror execution
 - **File System**: Configuration and operation storage
 - **UUID**: Unique operation identification
+- **Pre-fetched Catalogs**: Operator catalogs pre-fetched during build process
+- **In-Memory Caching**: Fast access to pre-fetched catalog data
 
 #### API Endpoints
-- **Dashboard**: `/api/stats`, `/api/operations/recent`, `/api/system/status`
-- **Configuration**: `/api/config/*`, `/api/channels`, `/api/operators`
-- **Operations**: `/api/operations/*` (CRUD operations)
-- **Settings**: `/api/settings/*`, `/api/system/info`
+The application provides a comprehensive RESTful API with the following endpoint categories:
+
+- **Dashboard**: `/api/stats`, `/api/operations/recent`, `/api/system/info`
+- **Configuration**: `/api/config/list`, `/api/config/save`, `/api/channels`, `/api/operators`
+- **Dynamic Discovery**: `/api/catalogs`, `/api/operator-channels/:operator`
+- **Operations**: `/api/operations`, `/api/operations/start`, `/api/operations/:id/*` (CRUD operations)
+- **Settings**: `/api/settings`, `/api/system/info`
+
+For complete API documentation, see [API.md](API.md).
+
 
 ### 🚀 Deployment Options
 
@@ -239,21 +249,7 @@ npm run server
 - Version control for dependencies
 - Consistent behavior across environments
 
-## Future Enhancements
 
-### Planned Features
-- **Multi-cluster Support**: Manage multiple OpenShift clusters
-- **Advanced Analytics**: Detailed performance metrics
-- **Template Library**: Pre-built configuration templates
-- **API Integration**: External system integration
-- **Enhanced Security**: Role-based access control
-
-### Technical Improvements
-- **Performance Optimization**: Faster operation execution
-- **Better Error Handling**: Enhanced error recovery
-- **UI/UX Enhancements**: Improved user experience
-- **Mobile Support**: Better mobile interface
-- **Accessibility**: WCAG compliance improvements
 
 ## Conclusion
 

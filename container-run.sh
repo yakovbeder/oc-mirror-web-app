@@ -78,6 +78,41 @@ create_directories() {
     print_success "Data directories created with proper permissions"
 }
 
+    # Fetch catalogs on host (if not skipped)
+    fetch_catalogs() {
+        if [ "$SKIP_CATALOG_FETCH" = "true" ]; then
+            print_warning "Skipping catalog fetch (will use fallback data)"
+            return 0
+        fi
+
+        print_status "Checking for existing operator catalogs..."
+
+        # Check if catalog data already exists and is recent (less than 24 hours old)
+        if [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
+            local catalog_age=$(( $(date +%s) - $(stat -c %Y catalog-data/catalog-index.json 2>/dev/null || echo 0) ))
+            if [ $catalog_age -lt 86400 ]; then # 24 hours = 86400 seconds
+                print_success "Using existing catalog data (less than 24 hours old)"
+                return 0
+            else
+                print_status "Existing catalog data is old, refreshing..."
+            fi
+        else
+            print_status "No catalog data found, fetching operator catalogs..."
+        fi
+
+        # Run the host-side catalog fetch script
+        if [ -f "fetch-catalogs-host.sh" ]; then
+            chmod +x fetch-catalogs-host.sh
+            if ./fetch-catalogs-host.sh; then
+                print_success "Catalog fetch completed successfully"
+            else
+                print_warning "Catalog fetch failed, will use fallback data"
+            fi
+        else
+            print_warning "Catalog fetch script not found, will use fallback data"
+        fi
+    }
+
 # Build the container image
 build_image() {
     print_status "Building container image with $CONTAINER_ENGINE..."
@@ -116,6 +151,8 @@ run_container() {
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \
+        -e OC_MIRROR_CACHE_DIR=/app/data/cache \
+        -e LOG_LEVEL=info \
         --restart unless-stopped \
         oc-mirror-web-app
     
@@ -177,6 +214,14 @@ main() {
     check_container_runtime
     create_directories
     fix_permissions
+    
+    # Only fetch catalogs if not explicitly skipped
+    if [ "$SKIP_CATALOG_FETCH" != "true" ]; then
+        fetch_catalogs
+    else
+        print_warning "Skipping catalog fetch (using existing data if available)"
+    fi
+    
     build_image
     run_container
     show_status
@@ -194,16 +239,25 @@ case "${1:-}" in
         echo "  --stop         Stop and remove the container"
         echo "  --logs         Show container logs"
         echo "  --engine       Show detected container engine"
+        echo "  --skip-catalogs Skip catalog fetching during build (faster build)"
+        echo ""
+        echo "Environment Variables:"
+        echo "  SKIP_CATALOG_FETCH=true  Skip catalog fetching during build"
         echo ""
         echo "Examples:"
         echo "  $0              # Build and run the application"
         echo "  $0 --build-only # Only build the image"
         echo "  $0 --stop       # Stop the application"
         echo "  $0 --logs       # View application logs"
+        echo "  $0 --skip-catalogs # Build without fetching catalogs"
         echo ""
         echo "Container Engine Support:"
         echo "  - Docker (if available)"
         echo "  - Podman (if available)"
+        echo ""
+        echo "Catalog Fetching:"
+        echo "  The build process fetches operator catalogs for OCP versions 4.15-4.19."
+        echo "  This can take several minutes. Use --skip-catalogs for faster builds."
         exit 0
         ;;
     --build-only)
@@ -230,6 +284,10 @@ case "${1:-}" in
         detect_container_runtime
         $CONTAINER_ENGINE logs -f oc-mirror-web-app
         exit 0
+        ;;
+    --skip-catalogs)
+        export SKIP_CATALOG_FETCH=true
+        main
         ;;
     --engine)
         detect_container_runtime

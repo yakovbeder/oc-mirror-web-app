@@ -1018,4 +1018,137 @@ body .Toastify__toast-body {
 .sidebar-toggle:focus-visible {
   outline: 3px solid var(--rh-red);
   outline-offset: 2px;
+}
+
+/* Enhanced YAML Preview Styles */
+.yaml-preview-container {
+  margin: 1rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--light-gray);
+  background: #2d2d30;
+}
+
+.yaml-preview-container .react-syntax-highlighter {
+  margin: 0 !important;
+  padding: 1.5rem !important;
+  background: #2d2d30 !important;
+  border-radius: 12px !important;
+}
+
+.yaml-preview-container .react-syntax-highlighter pre {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+.yaml-preview-container .react-syntax-highlighter code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  color: #d4d4d4 !important;
+}
+
+/* Custom scrollbar for YAML preview */
+.yaml-preview-container .react-syntax-highlighter pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.yaml-preview-container .react-syntax-highlighter pre::-webkit-scrollbar-track {
+  background: #1e1e1e;
+  border-radius: 4px;
+}
+
+.yaml-preview-container .react-syntax-highlighter pre::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 4px;
+}
+
+.yaml-preview-container .react-syntax-highlighter pre::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
+
+/* Line numbers styling */
+.yaml-preview-container .react-syntax-highlighter .linenumber {
+  color: #6a9955 !important;
+  font-size: 12px !important;
+  padding-right: 1rem !important;
+  user-select: none !important;
+  opacity: 0.7;
+}
+
+/* Syntax highlighting improvements */
+.yaml-preview-container .react-syntax-highlighter .token.key {
+  color: #9cdcfe !important;
+  font-weight: 600;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.string {
+  color: #ce9178 !important;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.number {
+  color: #b5cea8 !important;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.boolean {
+  color: #569cd6 !important;
+  font-weight: 600;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.null {
+  color: #569cd6 !important;
+  font-style: italic;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.comment {
+  color: #6a9955 !important;
+  font-style: italic;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.punctuation {
+  color: #d4d4d4 !important;
+}
+
+.yaml-preview-container .react-syntax-highlighter .token.operator {
+  color: #d4d4d4 !important;
+}
+
+/* Hover effects */
+.yaml-preview-container:hover {
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+  transition: all 0.3s ease;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .yaml-preview-container .react-syntax-highlighter {
+    padding: 1rem !important;
+  }
+  
+  .yaml-preview-container .react-syntax-highlighter code {
+    font-size: 12px !important;
+  }
+  
+  .tab-content .flex-between {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+/* Copy button styling for YAML preview */
+.tab-content .flex-between .btn {
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.tab-content .flex-between .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 } 

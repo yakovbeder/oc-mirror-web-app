@@ -89,4 +89,8 @@ data/cache/*
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# Pre-fetched operator catalog data (large files, generated during build)
+catalog-data/*
+!catalog-data/.gitkeep 

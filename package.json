@@ -9,7 +9,12 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "concurrently \"npm run start\" \"npm run server\"",
-    "server": "nodemon server/index.js"
+    "server": "nodemon server/index.js",
+    "lint": "eslint src/**/*.{js,jsx}",
+    "lint:fix": "eslint src/**/*.{js,jsx} --fix",
+    "format": "prettier --write src/**/*.{js,jsx,css}",
+    "clean": "rm -rf build node_modules package-lock.json",
+    "reinstall": "npm run clean && npm install"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -26,11 +31,15 @@
     "cors": "^2.8.5",
     "multer": "^2.0.0-rc.3",
     "node-cron": "^3.0.3",
-    "uuid": "^11.0.1"
+    "uuid": "^11.0.1",
+    "compression": "^1.7.4"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "eslint": "^8.57.0",
+    "eslint-config-react-app": "^7.0.1",
+    "prettier": "^3.2.5"
   },
   "browserslist": {
     "production": [

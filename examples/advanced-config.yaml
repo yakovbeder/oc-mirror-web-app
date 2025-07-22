@@ -12,7 +12,6 @@ mirror:
     graph: true
   operators:
   - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.18
-    targetCatalog: my-redhat-catalog
     packages:
     - name: advanced-cluster-management
       channels:
@@ -35,7 +34,6 @@ mirror:
         minVersion: "2.4.0"
         maxVersion: "2.4.0"
   - catalog: registry.redhat.io/redhat/certified-operator-index:v4.18
-    targetCatalog: my-certified-catalog
     packages:
     - name: mongodb-enterprise
       channels:
@@ -43,7 +41,6 @@ mirror:
         minVersion: "1.20.0"
         maxVersion: "1.20.0"
   - catalog: registry.redhat.io/redhat/community-operator-index:v4.18
-    targetCatalog: my-community-catalog
     packages:
     - name: prometheus
       channels:

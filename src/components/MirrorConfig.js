@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 import YAML from 'yaml';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const MirrorConfig = () => {
   const [config, setConfig] = useState({
@@ -22,18 +24,25 @@ const MirrorConfig = () => {
 
   const [availableChannels, setAvailableChannels] = useState([]);
   const [availableOperators, setAvailableOperators] = useState([]);
+  const [availableCatalogs, setAvailableCatalogs] = useState([]);
+  const [operatorChannels, setOperatorChannels] = useState({});
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('platform');
 
   const ocpVersions = [
-    '4.16', '4.17', '4.18', '4.19', '4.20'
+    '4.15', '4.16', '4.17', '4.18', '4.19'
+  ];
+
+  const catalogVersions = [
+    'v4.15', 'v4.16', 'v4.17', 'v4.18', 'v4.19'
   ];
 
   const architectures = [
     'amd64', 'arm64', 'ppc64le', 's390x'
   ];
 
-  const operatorCatalogs = [
+  // Use dynamic catalogs from API, fallback to static if needed
+  const operatorCatalogs = availableCatalogs.length > 0 ? availableCatalogs : [
     {
       name: 'redhat-operator-index',
       url: 'registry.redhat.io/redhat/redhat-operator-index',
@@ -48,13 +57,24 @@ const MirrorConfig = () => {
       name: 'community-operator-index',
       url: 'registry.redhat.io/redhat/community-operator-index',
       description: 'Community operators'
-    },
-    {
-      name: 'marketplace-operator-index',
-      url: 'registry.redhat.io/redhat/redhat-marketplace-index',
-      description: 'Marketplace operators'
     }
   ];
+
+  // Helper function to get catalog URL with version
+  const getCatalogUrlWithVersion = (catalogUrl, version) => {
+    if (catalogUrl.includes(':')) {
+      return catalogUrl;
+    }
+    return `${catalogUrl}:v${version}`;
+  };
+
+  // Helper function to get catalog display name with version
+  const getCatalogDisplayName = (catalog, version) => {
+    if (catalog.ocpVersion) {
+      return `${catalog.name} (OCP ${catalog.ocpVersion})`;
+    }
+    return `${catalog.name} (OCP ${version})`;
+  };
 
   useEffect(() => {
     fetchAvailableData();
@@ -66,12 +86,13 @@ const MirrorConfig = () => {
   const fetchAvailableData = async () => {
     try {
       setLoading(true);
-      const [channelsRes, operatorsRes] = await Promise.all([
+      const [channelsRes, catalogsRes] = await Promise.all([
         axios.get('/api/channels'),
-        axios.get('/api/operators')
+        axios.get('/api/catalogs')
       ]);
       setAvailableChannels(channelsRes.data);
-      setAvailableOperators(operatorsRes.data);
+      setAvailableCatalogs(catalogsRes.data);
+      // Don't fetch operators here - we'll fetch them per catalog
     } catch (error) {
       console.error('Error fetching available data:', error);
       toast.error('Failed to load available channels and operators');
@@ -79,6 +100,37 @@ const MirrorConfig = () => {
       setLoading(false);
     }
   };
+
+  const fetchOperatorsForCatalog = async (catalogUrl) => {
+    try {
+      const response = await axios.get(`/api/operators?catalog=${encodeURIComponent(catalogUrl)}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching operators for catalog:', error);
+      return [];
+    }
+  };
+
+  const fetchOperatorChannels = async (operatorName) => {
+    if (operatorChannels[operatorName]) {
+      return operatorChannels[operatorName];
+    }
+    
+    try {
+      const response = await axios.get(`/api/operator-channels/${operatorName}`);
+      setOperatorChannels(prev => ({
+        ...prev,
+        [operatorName]: response.data
+      }));
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching channels for ${operatorName}:`, error);
+      toast.error(`Failed to load channels for ${operatorName}`);
+      return ['stable'];
+    }
+  };
+
+
 
   const addPlatformChannel = () => {
     const newChannel = {
@@ -127,10 +179,14 @@ const MirrorConfig = () => {
     }));
   };
 
-  const addOperator = () => {
+  const addOperator = async () => {
+    const defaultCatalog = operatorCatalogs[0]?.url || 'registry.redhat.io/redhat/redhat-operator-index:v4.15';
+    const operators = await fetchOperatorsForCatalog(defaultCatalog);
+    
     const newOperator = {
-      catalog: operatorCatalogs[0].url,
-      targetCatalog: 'my-catalog',
+      catalog: defaultCatalog,
+      catalogVersion: defaultCatalog.split(':').pop(),
+      availableOperators: operators,
       packages: []
     };
     setConfig(prev => ({
@@ -184,7 +240,7 @@ const MirrorConfig = () => {
     }));
   };
 
-  const updateOperatorPackage = (operatorIndex, packageIndex, field, value) => {
+  const updateOperatorPackage = async (operatorIndex, packageIndex, field, value) => {
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -201,6 +257,11 @@ const MirrorConfig = () => {
         )
       }
     }));
+
+    // If updating package name, fetch channels for the new package
+    if (field === 'name' && value) {
+      await fetchOperatorChannels(value);
+    }
   };
 
   const addOperatorPackageChannel = (operatorIndex, packageIndex) => {
@@ -315,7 +376,7 @@ const MirrorConfig = () => {
   const saveConfiguration = async () => {
     try {
       setLoading(true);
-      const yamlString = YAML.stringify(config);
+      const yamlString = YAML.stringify(generateCleanConfig());
       const response = await axios.post('/api/config/save', {
         config: yamlString,
         name: `imageset-config-${Date.now()}.yaml`
@@ -331,8 +392,39 @@ const MirrorConfig = () => {
     }
   };
 
+  // Function to generate clean YAML configuration for preview and download
+  const generateCleanConfig = () => {
+    const cleanConfig = {
+      kind: 'ImageSetConfiguration',
+      apiVersion: 'mirror.openshift.io/v2alpha1',
+      mirror: {
+        operators: [],
+        additionalImages: config.mirror.additionalImages
+      }
+    };
+
+    // Only add platform section if channels exist
+    if (config.mirror.platform.channels && config.mirror.platform.channels.length > 0) {
+      cleanConfig.mirror.platform = {
+        graph: config.mirror.platform.graph,
+        channels: config.mirror.platform.channels
+      };
+    }
+
+    // Clean up operators - remove catalogVersion and availableOperators
+    config.mirror.operators.forEach(operator => {
+      const cleanOperator = {
+        catalog: operator.catalog,
+        packages: operator.packages
+      };
+      cleanConfig.mirror.operators.push(cleanOperator);
+    });
+
+    return cleanConfig;
+  };
+
   const downloadConfiguration = () => {
-    const yamlString = YAML.stringify(config);
+    const yamlString = YAML.stringify(generateCleanConfig());
     const blob = new Blob([yamlString], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -347,16 +439,23 @@ const MirrorConfig = () => {
   const validateConfiguration = () => {
     const errors = [];
     
-    if (!config.mirror.platform.channels.length) {
-      errors.push('At least one platform channel is required');
+    // Check if we have any content to mirror
+    const hasPlatformChannels = config.mirror.platform.channels.length > 0;
+    const hasOperators = config.mirror.operators.length > 0;
+    const hasAdditionalImages = config.mirror.additionalImages.length > 0;
+    
+    if (!hasPlatformChannels && !hasOperators && !hasAdditionalImages) {
+      errors.push('At least one platform channel, operator, or additional image is required');
     }
     
+    // Validate platform channels if present
     config.mirror.platform.channels.forEach((channel, index) => {
       if (!channel.name) {
         errors.push(`Platform channel ${index + 1} must have a name`);
       }
     });
     
+    // Validate operators if present
     config.mirror.operators.forEach((operator, opIndex) => {
       if (!operator.catalog) {
         errors.push(`Operator ${opIndex + 1} must have a catalog`);
@@ -483,8 +582,10 @@ const MirrorConfig = () => {
         </div>
 
         <div className={`tab-content ${activeTab === 'operators' ? 'active' : ''}`}>
-          <h3>⚙️ Operators</h3>
-          <p className="text-muted">Configure operator catalogs and packages to mirror.</p>
+          <div>
+            <h3>⚙️ Operators</h3>
+            <p className="text-muted">Configure operator catalogs and packages to mirror.</p>
+          </div>
           
           {config.mirror.operators.map((operator, opIndex) => (
             <div key={opIndex} className="card" style={{ marginBottom: '1rem' }}>
@@ -503,52 +604,44 @@ const MirrorConfig = () => {
                 <select 
                   className="form-control"
                   value={operator.catalog}
-                  onChange={(e) => {
+                  onChange={async (e) => {
+                    const newCatalog = e.target.value;
+                    const version = newCatalog.split(':').pop();
+                    
+                    // Fetch operators for the selected catalog
+                    const operators = await fetchOperatorsForCatalog(newCatalog);
+                    
                     setConfig(prev => ({
                       ...prev,
                       mirror: {
                         ...prev.mirror,
                         operators: prev.mirror.operators.map((op, i) => 
-                          i === opIndex ? { ...op, catalog: e.target.value } : op
+                          i === opIndex ? { 
+                            ...op, 
+                            catalog: newCatalog,
+                            catalogVersion: version,
+                            availableOperators: operators // Store operators for this catalog
+                          } : op
                         )
                       }
                     }));
                   }}
                 >
                   {operatorCatalogs.map(catalog => (
-                    <option key={catalog.name} value={catalog.url}>
-                      {catalog.name} - {catalog.description}
+                    <option key={catalog.url} value={catalog.url}>
+                      {catalog.name} (OCP {catalog.url.split(':').pop()}) - {catalog.description}
                     </option>
                   ))}
                 </select>
               </div>
               
-              <div className="form-group">
-                <label>Target Catalog Name</label>
-                <input 
-                  type="text" 
-                  className="form-control"
-                  value={operator.targetCatalog}
-                  onChange={(e) => {
-                    setConfig(prev => ({
-                      ...prev,
-                      mirror: {
-                        ...prev.mirror,
-                        operators: prev.mirror.operators.map((op, i) => 
-                          i === opIndex ? { ...op, targetCatalog: e.target.value } : op
-                        )
-                      }
-                    }));
-                  }}
-                  placeholder="my-catalog"
-                />
-              </div>
+
               
-              <h5>📦 Packages</h5>
+              <h5>⚙️ Operators</h5>
               {operator.packages.map((pkg, pkgIndex) => (
                 <div key={pkgIndex} className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
                   <div className="flex-between">
-                    <h6>Package {pkgIndex + 1}</h6>
+                    <h6>Operator {pkgIndex + 1}</h6>
                     <button 
                       className="btn btn-danger" 
                       onClick={() => removePackageFromOperator(opIndex, pkgIndex)}
@@ -557,29 +650,45 @@ const MirrorConfig = () => {
                     </button>
                   </div>
                   <div className="form-group">
-                    <label>Package Name</label>
-                    <input 
-                      type="text" 
+                    <label>Operator Name</label>
+                    <select 
                       className="form-control"
                       value={pkg.name}
                       onChange={(e) => updateOperatorPackage(opIndex, pkgIndex, 'name', e.target.value)}
-                      placeholder="e.g., advanced-cluster-management"
-                    />
+                    >
+                      <option value="">Select an operator...</option>
+                      {(operator.availableOperators || [])
+                        .slice()
+                        .sort((a, b) => a.localeCompare(b))
+                        .map(operatorName => (
+                          <option key={operatorName} value={operatorName}>
+                            {operatorName}
+                          </option>
+                        ))}
+                    </select>
                   </div>
                   
                   <div className="form-group">
-                    <label>Channels for {pkg.name || 'this package'}</label>
+                    <label>Channels for {pkg.name || 'this operator'}</label>
                     <div className="channels-container">
                       {pkg.channels && pkg.channels.map((channel, channelIndex) => (
                         <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem' }}>
-                          <input
-                            type="text"
+                          <select
                             className="form-control"
                             style={{ marginRight: '0.5rem' }}
                             value={channel.name}
                             onChange={(e) => updateOperatorPackageChannel(opIndex, pkgIndex, channelIndex, e.target.value)}
-                            placeholder="e.g., stable, preview, candidate"
-                          />
+                          >
+                            <option value="">Select a channel...</option>
+                            {operatorChannels[pkg.name] && operatorChannels[pkg.name]
+                              .slice()
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map(channel => (
+                                <option key={channel.name} value={channel.name}>
+                                  {channel.name}
+                                </option>
+                              ))}
+                          </select>
                           <button
                             className="btn btn-sm btn-danger"
                             onClick={() => removeOperatorPackageChannel(opIndex, pkgIndex, channelIndex)}
@@ -596,7 +705,7 @@ const MirrorConfig = () => {
                       </button>
                     </div>
                     <small className="form-text text-muted">
-                      Leave empty to mirror all channels for this package
+                      Leave empty to mirror all channels for this operator
                     </small>
                   </div>
                 </div>
@@ -606,7 +715,7 @@ const MirrorConfig = () => {
                 className="btn btn-secondary" 
                 onClick={() => addPackageToOperator(opIndex)}
               >
-                ➕ Add Package
+                ➕ Add Operator
               </button>
             </div>
           ))}
@@ -651,11 +760,43 @@ const MirrorConfig = () => {
         </div>
 
         <div className={`tab-content ${activeTab === 'preview' ? 'active' : ''}`}>
-          <h3>👁️ Configuration Preview</h3>
-          <p className="text-muted">Preview the generated YAML configuration.</p>
+          <div className="flex-between">
+            <div>
+              <h3>👁️ Configuration Preview</h3>
+              <p className="text-muted">Preview the generated YAML configuration.</p>
+            </div>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => {
+                navigator.clipboard.writeText(YAML.stringify(generateCleanConfig(), { indent: 2 }));
+                toast.success('YAML configuration copied to clipboard!');
+              }}
+            >
+              📋 Copy YAML
+            </button>
+          </div>
           
-          <div className="log-output">
-            {YAML.stringify(config, { indent: 2 })}
+          <div className="yaml-preview-container">
+            <SyntaxHighlighter
+              language="yaml"
+              style={tomorrow}
+              customStyle={{
+                margin: 0,
+                borderRadius: '8px',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+              }}
+              showLineNumbers={true}
+              wrapLines={true}
+              lineNumberStyle={{
+                color: '#6a9955',
+                marginRight: '1rem',
+                userSelect: 'none'
+              }}
+            >
+              {YAML.stringify(generateCleanConfig(), { indent: 2 })}
+            </SyntaxHighlighter>
           </div>
         </div>
       </div>

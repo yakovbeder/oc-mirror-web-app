@@ -15,9 +15,11 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - STORAGE_DIR=/app/data
+      - OC_MIRROR_CACHE_DIR=/app/data/cache
+      - LOG_LEVEL=info
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/system/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/system/info"]
       interval: 30s
       timeout: 10s
       retries: 3

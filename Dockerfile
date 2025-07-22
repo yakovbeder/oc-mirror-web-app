@@ -16,6 +16,9 @@ RUN npm install && npm audit fix || true
 # Copy source code
 COPY . .
 
+# Fix linting issues automatically
+RUN npm run lint:fix || true
+
 # Build the React app
 RUN npm run build
 
@@ -37,6 +40,7 @@ RUN apt-get update && apt-get install -y \
     gzip \
     ca-certificates \
     libgpgme11 \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Set URLs for oc and oc-mirror based on architecture
@@ -71,11 +75,16 @@ COPY package*.json ./
 # Install only production dependencies and fix non-breaking vulnerabilities
 RUN npm install --only=production && npm audit fix || true && npm cache clean --force
 
+
+
 # Copy built React app from builder stage
 COPY --from=builder /app/build ./build
 
 # Copy server code
 COPY server ./server
+
+# Copy pre-fetched catalog data (if available)
+COPY catalog-data ./catalog-data
 
 # Create data directory
 RUN mkdir -p /app/data
@@ -95,7 +104,7 @@ EXPOSE 3001
 
 # Health check (Docker format - Podman will show warning but ignore gracefully)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3001/api/system/status || exit 1
+  CMD curl -f http://localhost:3001/api/system/info || exit 1
 
 # Start the application
 CMD ["node", "server/index.js"] 

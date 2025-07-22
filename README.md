@@ -36,7 +36,7 @@ The script will:
 - ✅ Check container runtime availability
 - ✅ Create necessary data directories
 - ✅ Build the container image (includes oc and oc-mirror v2)
-- ✅ Start the containerized application
+- ✅ Start the containerized application with optimized settings
 - ✅ Display access information
 
 ### 3. Access the Application
@@ -62,7 +62,36 @@ Once running, access the web interface at:
 
 # Check which container engine is detected
 ./container-run.sh --engine
+
+# Build without fetching catalogs (faster build)
+./container-run.sh --skip-catalogs
 ```
+
+The container now includes:
+- **Optimized environment variables** for better performance
+- **Enhanced logging** with configurable log levels
+- **Improved caching** for OC Mirror operations
+- **Better error handling** and health checks
+- **Pre-fetched operator catalogs** for OCP versions 4.15-4.20 (faster operator selection)
+
+### Operator Catalog Fetching
+
+The application now pre-fetches operator catalogs for all supported OCP versions (4.15-4.20) during the build process. This provides:
+
+- **Faster operator selection** - No need to query catalogs at runtime
+- **Version-specific channels** - Each OCP version has its own operator catalog
+- **Offline capability** - Works without internet access after build
+- **Accurate channel information** - Real catalog data instead of static fallbacks
+
+**Build Options:**
+- **Default**: Full catalog fetch (takes 5-10 minutes, provides complete data)
+- **Fast build**: Use `--skip-catalogs` flag (uses fallback data, builds in 2-3 minutes)
+
+**Supported Catalogs:**
+- Red Hat Operator Index
+- Certified Operator Index  
+- Community Operator Index
+- Marketplace Operator Index
 
 ### Alternative: Podman Compose
 
@@ -97,6 +126,34 @@ docker-compose logs -f
 # Stop
 docker-compose down
 ```
+
+## 🆕 Recent Improvements
+
+### Enhanced Operator Configuration
+- **Dynamic Operator Discovery**: Operator packages and channels are dynamically queried from real catalogs
+- **Dropdown Selection**: Operator packages and channels use dropdown lists instead of text input
+- **Real-time Updates**: New operators and channels appear automatically without code changes
+- **Pre-fetched Catalogs**: Operator catalogs pre-fetched during build for fast access
+
+### Code Quality & Performance
+- **ESLint & Prettier**: Added code linting and formatting tools
+- **Compression**: Server responses are compressed for better performance
+- **Caching**: Static files and API responses are cached
+- **Error Handling**: Improved error handling and user feedback
+- **Logging**: Enhanced request logging for better debugging
+
+### New API Endpoints
+- `/api/catalogs` - Get available operator catalogs
+- `/api/operators` - Get all available operators (dynamic)
+- `/api/operator-channels/:operator` - Get channels for specific operator (dynamic)
+- `/api/system/info` - Get system information and health status
+
+### Operator Catalog Management
+The application uses pre-fetched operator catalogs:
+
+- Pre-fetched operator catalogs for fast access
+- In-memory caching of catalog data
+- Fallback to static data if pre-fetched data unavailable
 
 ## 🔧 Manual Setup (Advanced Users Only)
 
@@ -163,18 +220,45 @@ oc-mirror-web-app/
 
 ## 🔄 oc-mirror v2 Support
 
-This application is specifically designed for **oc-mirror v2**, which includes:
+This application is specifically designed for **oc-mirror v2**.
 
 ### ✅ Supported Features
-- **Cache-based Storage**: No more `storageConfig` - uses local cache
+- **Cache-based Storage**: Uses local cache for efficient operations
 - **Improved Performance**: Faster mirroring operations
 - **Better Error Handling**: Enhanced error reporting and recovery
 - **Simplified Configuration**: Streamlined configuration format
 
-### 📝 Configuration Changes
-- ❌ **Removed**: `storageConfig` field (no longer needed)
-- ✅ **Added**: Cache directory management
-- ✅ **Enhanced**: Better validation and error handling
+### 📋 Configuration Format
+
+The application generates clean oc-mirror v2 configurations:
+
+```yaml
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  platform:
+    channels:
+    - name: stable-4.18
+      minVersion: "4.18.0"
+      maxVersion: "4.18.10"
+    graph: true
+  operators:
+  - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.18
+    packages:
+    - name: advanced-cluster-management
+      channels:
+      - name: release-2.8
+        minVersion: "2.8.0"
+        maxVersion: "2.8.0"
+  additionalImages:
+  - name: registry.redhat.io/ubi8/ubi:latest
+```
+
+### 📝 Configuration Features
+- ✅ **Cache-based Storage**: Local cache for efficient operations
+- ✅ **Direct Package Configuration**: Streamlined operator configuration
+- ✅ **Enhanced Validation**: Better validation and error handling
+- ✅ **Simplified Format**: Clean and readable configuration structure
 
 ## 🎨 User Interface
 
@@ -237,14 +321,18 @@ npm run server
 ```
 
 ### API Documentation
-The application provides a RESTful API at `http://localhost:3001/api/`:
+The application provides a comprehensive RESTful API at `http://localhost:3001/api/`. For detailed API documentation including all endpoints, request/response formats, and examples, see [API.md](API.md).
 
-- `GET /api/system/status` - System health check
+**Key Endpoints:**
+- `GET /api/system/info` - System health check and information
 - `GET /api/stats` - Application statistics
-- `GET /api/config` - List configurations
-- `POST /api/config` - Create configuration
+- `GET /api/config/list` - List configurations
+- `POST /api/config/save` - Create/save configuration
 - `GET /api/operations` - List operations
-- `POST /api/operations` - Start operation
+- `POST /api/operations/start` - Start operation
+- `GET /api/catalogs` - Get available operator catalogs
+- `GET /api/operators` - Get available operators
+- `GET /api/operator-channels/:operator` - Get channels for specific operator
 
 ## 🤝 Contributing
 
@@ -272,4 +360,22 @@ For issues and questions:
 - Containerized deployment
 - Modern React interface
 - Real-time operation monitoring
-- Enhanced error handling 
+- Enhanced error handling
+- Pre-fetched operator catalogs with in-memory caching
+
+## 🔧 Version Compatibility
+
+### Supported oc-mirror Versions
+- **oc-mirror v2.x**: ✅ Fully supported
+
+### Supported OpenShift Versions
+- **OCP 4.15**: ✅ Supported
+- **OCP 4.16**: ✅ Supported  
+- **OCP 4.17**: ✅ Supported
+- **OCP 4.18**: ✅ Supported
+- **OCP 4.19**: ✅ Supported
+
+### Container Runtime Requirements
+- **Docker**: 20.10+ ✅ Supported
+- **Podman**: 4.0+ ✅ Supported
+- **Node.js**: 18+ (included in container) 

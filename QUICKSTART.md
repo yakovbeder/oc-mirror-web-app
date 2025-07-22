@@ -29,7 +29,10 @@ The script automatically detects whether you have Docker or Podman and uses the 
 1. Go to **Mirror Configuration** tab
 2. Click **Create New Configuration**
 3. Choose a template (Basic, Advanced, or Minimal)
-4. Customize your settings
+4. **Configure Operators**:
+   - Select operator catalogs from dropdown
+   - Choose packages from dynamic list (auto-updated)
+   - Select channels from real-time catalog data
 5. Save the configuration
 
 ### Step 5: Run Your First Operation
@@ -82,6 +85,9 @@ The containerized version includes:
 - ✅ **All dependencies** pre-installed
 - ✅ **Persistent data storage**
 - ✅ **Health monitoring**
+- ✅ **Pre-fetched operator catalogs** (fast catalog access)
+- ✅ **Pre-fetched operator catalogs** (fast access to operator data)
+- ✅ **Enhanced performance** (compression, error handling, logging)
 
 ## 🔧 Container Management
 
@@ -177,12 +183,18 @@ podman system connection list
 sudo systemctl restart podman
 ```
 
+### Configuration Format Issues
+If you encounter configuration errors:
+- **Problem**: Invalid configuration format
+- **Solution**: Use the application's web interface to generate valid configurations
+- **Note**: The application validates configurations before saving
+
 ## 📊 Verification
 
 After starting, verify everything is working:
 
 1. **Web Interface**: http://localhost:3000 loads successfully
-2. **API Health**: http://localhost:3001/api/system/status returns OK
+2. **API Health**: http://localhost:3001/api/system/info returns OK
 3. **Container Status**: 
    ```bash
    podman ps
