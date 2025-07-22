@@ -140,6 +140,7 @@ process_catalog_data() {
         if [ -d "$operator_dir" ]; then
             local catalog_json="${operator_dir}/catalog.json"
             local index_json="${operator_dir}/index.json"
+            local index_yaml="${operator_dir}/index.yaml"
             local package_json="${operator_dir}/package.json"
             local channel_json="${operator_dir}/channel.json"
             local catalog_yaml="${operator_dir}/catalog.yaml"
@@ -168,6 +169,12 @@ process_catalog_data() {
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
                     channels=$(jq -cs -r --arg channel "$default_channel" '.[] | select(.name==$channel) | .entries[].name // empty' "$json_file" 2>/dev/null)
                 fi
+            elif [ -f "$index_yaml" ]; then
+                # Handle index.yaml files (like lightspeed-operator)
+                operator_name=$(grep "^name:" "$index_yaml" | head -1 | sed 's/^name: //' 2>/dev/null)
+                default_channel=$(grep "^defaultChannel:" "$index_yaml" | head -1 | sed 's/^defaultChannel: //' 2>/dev/null)
+                # For index.yaml files, we'll set channels to empty for now (complex structure)
+                channels=""
             elif [ -f "$package_json" ] && [ -f "$channel_json" ]; then
                 # Handle package.json + channel.json format
                 operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)

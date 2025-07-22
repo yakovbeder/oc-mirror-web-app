@@ -373,17 +373,39 @@ const MirrorConfig = () => {
     }));
   };
 
+  const [customConfigName, setCustomConfigName] = useState('');
+  const [showCustomNameInput, setShowCustomNameInput] = useState(false);
+
+  const generateDefaultConfigName = () => {
+    const now = new Date();
+    const dateStr = now.toISOString()
+      .replace(/T/, '-')
+      .replace(/\..+/, '')
+      .replace(/:/g, '-');
+    return `imageset-config-${dateStr}-UTC.yaml`;
+  };
+
   const saveConfiguration = async () => {
     try {
       setLoading(true);
       const yamlString = YAML.stringify(generateCleanConfig());
+      
+      // Use custom name if provided, otherwise use default date/time format
+      const configName = customConfigName.trim() 
+        ? `${customConfigName.trim()}.yaml`
+        : generateDefaultConfigName();
+      
       const response = await axios.post('/api/config/save', {
         config: yamlString,
-        name: `imageset-config-${Date.now()}.yaml`
+        name: configName
       });
       
       toast.success('Configuration saved successfully!');
       console.log('Configuration saved:', response.data);
+      
+      // Reset custom name after successful save
+      setCustomConfigName('');
+      setShowCustomNameInput(false);
     } catch (error) {
       console.error('Error saving configuration:', error);
       toast.error('Failed to save configuration');
@@ -429,7 +451,7 @@ const MirrorConfig = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `imageset-config-${Date.now()}.yaml`;
+    a.download = generateDefaultConfigName();
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -803,6 +825,43 @@ const MirrorConfig = () => {
 
       <div className="card">
         <h3>⚡ Actions</h3>
+        
+        {/* Custom Name Input */}
+        <div style={{ marginBottom: '1rem' }}>
+          <div className="flex-between" style={{ alignItems: 'center', marginBottom: '0.5rem' }}>
+            <label style={{ margin: 0, fontWeight: 'bold' }}>Configuration Name:</label>
+            <button 
+              className="btn btn-link" 
+              onClick={() => setShowCustomNameInput(!showCustomNameInput)}
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+            >
+              {showCustomNameInput ? 'Use Default Name' : 'Use Custom Name'}
+            </button>
+          </div>
+          
+          {showCustomNameInput ? (
+            <div className="form-group" style={{ marginBottom: '1rem' }}>
+              <input 
+                type="text" 
+                className="form-control"
+                value={customConfigName}
+                onChange={(e) => setCustomConfigName(e.target.value)}
+                placeholder="Enter custom configuration name (without .yaml extension)"
+                style={{ marginBottom: '0.5rem' }}
+              />
+              <small className="text-muted">
+                Leave empty to use default name: {generateDefaultConfigName()}
+              </small>
+            </div>
+          ) : (
+            <div style={{ marginBottom: '1rem' }}>
+              <small className="text-muted">
+                Default name: {generateDefaultConfigName()}
+              </small>
+            </div>
+          )}
+        </div>
+        
         <div className="flex">
           <button 
             className="btn btn-primary" 

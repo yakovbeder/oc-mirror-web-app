@@ -83,6 +83,26 @@ function parseOcMirrorVersion(raw) {
   return 'Not available';
 }
 
+// Helper to extract OC version from oc version output (excludes Kustomize version)
+function parseOcVersion(raw) {
+  // Look for the line that contains "Client Version:"
+  const lines = raw.split('\n');
+  for (const line of lines) {
+    if (line.includes('Client Version:')) {
+      const match = line.match(/Client Version:\s*(\S+)/);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+  // Fallback: return the first version-like string
+  const fallback = raw.match(/(\d+\.\d+\.\d+)/);
+  if (fallback) {
+    return fallback[1];
+  }
+  return 'Not available';
+}
+
 // Utility functions
 async function getSystemInfo() {
   try {
@@ -101,7 +121,7 @@ async function getSystemInfo() {
 
     return {
       ocMirrorVersion: parseOcMirrorVersion(ocMirrorVersion.stdout.trim()),
-      ocVersion: ocVersion.stdout.trim(),
+      ocVersion: parseOcVersion(ocVersion.stdout.trim()),
       systemArchitecture: systemArch.stdout.trim(),
       availableDiskSpace: availableSpace,
       totalDiskSpace: totalSpace
@@ -1154,23 +1174,99 @@ app.get('/api/operations/:id/details', async (req, res) => {
     const { id } = req.params;
     const operation = await getOperation(id);
     
-    // Mock details - in a real implementation, this would parse the actual results
+    if (!operation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    // Parse operation logs to extract real statistics
     const details = {
-      imagesMirrored: Math.floor(Math.random() * 1000) + 100,
-      operatorsMirrored: Math.floor(Math.random() * 50) + 10,
-      totalSize: Math.floor(Math.random() * 10000000000) + 1000000000,
-      platformImages: Math.floor(Math.random() * 500) + 50,
-      additionalImages: Math.floor(Math.random() * 100) + 10,
-      helmCharts: Math.floor(Math.random() * 20) + 5,
+      imagesMirrored: 0,
+      operatorsMirrored: 0,
+      totalSize: 0,
+      platformImages: 0,
+      additionalImages: 0,
+      helmCharts: 0,
+      configFile: operation.configFile,
       manifestFiles: [
         'imageContentSourcePolicy.yaml',
         'catalogSource.yaml',
         'mapping.txt'
       ]
     };
+
+    // Parse logs to extract statistics
+    if (operation.logs && Array.isArray(operation.logs)) {
+      const logs = operation.logs.join('\n');
+      
+      // Extract images to copy count
+      const imagesToCopyMatch = logs.match(/📌 images to copy (\d+)/);
+      if (imagesToCopyMatch) {
+        details.imagesMirrored = parseInt(imagesToCopyMatch[1]);
+      }
+      
+      // Extract operator count from success message
+      const operatorSuccessMatch = logs.match(/✓ (\d+) \/ (\d+) operator images mirrored successfully/);
+      if (operatorSuccessMatch) {
+        details.operatorsMirrored = parseInt(operatorSuccessMatch[1]);
+      }
+      
+      // Count unique operators from catalog collection
+      const catalogMatches = logs.match(/Collected catalog ([^\n]+)/g);
+      if (catalogMatches) {
+        details.operatorsMirrored = catalogMatches.length;
+      }
+      
+      // Estimate total size based on number of images (rough estimate)
+      if (details.imagesMirrored > 0) {
+        details.totalSize = details.imagesMirrored * 50 * 1024 * 1024; // ~50MB per image average
+      }
+      
+      // Extract platform images (release images) - only if actually collected
+      const releaseImagesMatch = logs.match(/🔍 collecting release images/);
+      if (releaseImagesMatch) {
+        // Check if release images were actually found and copied
+        const releaseImagesCollected = logs.match(/Success copying.*release.*➡️ cache/g);
+        if (releaseImagesCollected) {
+          details.platformImages = releaseImagesCollected.length;
+        } else {
+          details.platformImages = 0; // No release images actually copied
+        }
+      } else {
+        details.platformImages = 0; // No release images collection attempted
+      }
+      
+      // Extract additional images - only if actually collected
+      const additionalImagesMatch = logs.match(/🔍 collecting additional images/);
+      if (additionalImagesMatch) {
+        // Check if additional images were actually found and copied
+        const additionalImagesCollected = logs.match(/Success copying.*additional.*➡️ cache/g);
+        if (additionalImagesCollected) {
+          details.additionalImages = additionalImagesCollected.length;
+        } else {
+          details.additionalImages = 0; // No additional images actually copied
+        }
+      } else {
+        details.additionalImages = 0; // No additional images collection attempted
+      }
+      
+      // Extract helm charts - only if actually collected
+      const helmImagesMatch = logs.match(/🔍 collecting helm images/);
+      if (helmImagesMatch) {
+        // Check if helm charts were actually found and copied
+        const helmChartsCollected = logs.match(/Success copying.*helm.*➡️ cache/g);
+        if (helmChartsCollected) {
+          details.helmCharts = helmChartsCollected.length;
+        } else {
+          details.helmCharts = 0; // No helm charts actually copied
+        }
+      } else {
+        details.helmCharts = 0; // No helm charts collection attempted
+      }
+    }
     
     res.json(details);
   } catch (error) {
+    console.error('Error getting operation details:', error);
     res.status(500).json({ error: 'Failed to get operation details' });
   }
 });

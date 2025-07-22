@@ -44,6 +44,24 @@ detect_container_runtime() {
     fi
 }
 
+# Detect system architecture
+detect_system_architecture() {
+    SYSTEM_ARCH=$(uname -m)
+    case $SYSTEM_ARCH in
+        x86_64)
+            ARCH_NAME="AMD64 (x86_64)"
+            ;;
+        aarch64|arm64)
+            ARCH_NAME="ARM64 (aarch64)"
+            ;;
+        *)
+            ARCH_NAME="$SYSTEM_ARCH (unsupported)"
+            print_warning "Architecture $SYSTEM_ARCH may not be fully supported"
+            ;;
+    esac
+    print_status "System architecture: $ARCH_NAME"
+}
+
 # Check if container runtime is available
 check_container_runtime() {
     detect_container_runtime
@@ -78,14 +96,14 @@ create_directories() {
     print_success "Data directories created with proper permissions"
 }
 
-    # Fetch catalogs on host (if not skipped)
+    # Fetch catalogs on host (if explicitly requested)
     fetch_catalogs() {
-        if [ "$SKIP_CATALOG_FETCH" = "true" ]; then
-            print_warning "Skipping catalog fetch (will use fallback data)"
+        if [ "$FETCH_CATALOGS" != "true" ]; then
+            print_status "Skipping catalog fetch (will use fallback data)"
             return 0
         fi
 
-        print_status "Checking for existing operator catalogs..."
+        print_status "Fetching operator catalogs (this may take several minutes)..."
 
         # Check if catalog data already exists and is recent (less than 24 hours old)
         if [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
@@ -174,6 +192,7 @@ show_status() {
     echo "📁 Data Directory: $(pwd)/data"
     echo "📋 Container Name: oc-mirror-web-app"
     echo "🔧 Container Engine: $CONTAINER_ENGINE"
+    echo "🏗️  System Architecture: $ARCH_NAME"
     echo ""
     echo "📊 Container Status:"
     $CONTAINER_ENGINE ps --filter "name=oc-mirror-web-app" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
@@ -212,14 +231,15 @@ main() {
     echo ""
     
     check_container_runtime
+    detect_system_architecture
     create_directories
     fix_permissions
     
-    # Only fetch catalogs if not explicitly skipped
-    if [ "$SKIP_CATALOG_FETCH" != "true" ]; then
+    # Only fetch catalogs if explicitly requested
+    if [ "$FETCH_CATALOGS" = "true" ]; then
         fetch_catalogs
     else
-        print_warning "Skipping catalog fetch (using existing data if available)"
+        print_status "Skipping catalog fetch (using fallback data)"
     fi
     
     build_image
@@ -239,25 +259,26 @@ case "${1:-}" in
         echo "  --stop         Stop and remove the container"
         echo "  --logs         Show container logs"
         echo "  --engine       Show detected container engine"
-        echo "  --skip-catalogs Skip catalog fetching during build (faster build)"
+        echo "  --fetch-catalogs Fetch operator catalogs during build (slower but complete)"
         echo ""
         echo "Environment Variables:"
-        echo "  SKIP_CATALOG_FETCH=true  Skip catalog fetching during build"
+        echo "  FETCH_CATALOGS=true  Fetch operator catalogs during build"
         echo ""
         echo "Examples:"
-        echo "  $0              # Build and run the application"
+        echo "  $0              # Build and run the application (fast build)"
         echo "  $0 --build-only # Only build the image"
         echo "  $0 --stop       # Stop the application"
         echo "  $0 --logs       # View application logs"
-        echo "  $0 --skip-catalogs # Build without fetching catalogs"
+        echo "  $0 --fetch-catalogs # Build with catalog fetching (complete data)"
         echo ""
         echo "Container Engine Support:"
         echo "  - Docker (if available)"
         echo "  - Podman (if available)"
         echo ""
         echo "Catalog Fetching:"
-        echo "  The build process fetches operator catalogs for OCP versions 4.15-4.19."
-        echo "  This can take several minutes. Use --skip-catalogs for faster builds."
+        echo "  By default, the build process skips catalog fetching for faster builds."
+        echo "  Use --fetch-catalogs to fetch operator catalogs for OCP versions 4.15-4.19."
+        echo "  Catalog fetching can take several minutes but provides complete operator data."
         exit 0
         ;;
     --build-only)
@@ -285,8 +306,8 @@ case "${1:-}" in
         $CONTAINER_ENGINE logs -f oc-mirror-web-app
         exit 0
         ;;
-    --skip-catalogs)
-        export SKIP_CATALOG_FETCH=true
+    --fetch-catalogs)
+        export FETCH_CATALOGS=true
         main
         ;;
     --engine)

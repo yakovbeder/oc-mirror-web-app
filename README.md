@@ -63,35 +63,46 @@ Once running, access the web interface at:
 # Check which container engine is detected
 ./container-run.sh --engine
 
-# Build without fetching catalogs (faster build)
-./container-run.sh --skip-catalogs
+# Build with catalog fetching (complete data, slower build)
+./container-run.sh --fetch-catalogs
+
+# Build without fetching catalogs (fast build, uses fallback data)
+./container-run.sh
 ```
 
 The container now includes:
+- **Multi-architecture support** for AMD64 and ARM64
 - **Optimized environment variables** for better performance
 - **Enhanced logging** with configurable log levels
 - **Improved caching** for OC Mirror operations
 - **Better error handling** and health checks
-- **Pre-fetched operator catalogs** for OCP versions 4.15-4.20 (faster operator selection)
+- **Pre-fetched operator catalogs** for OCP versions 4.15-4.19 (faster operator selection)
+- **Multi-format catalog processing** for complete operator coverage
+- **Automatic architecture detection** and display in system status
 
 ### Operator Catalog Fetching
 
-The application now pre-fetches operator catalogs for all supported OCP versions (4.15-4.20) during the build process. This provides:
+The application now pre-fetches operator catalogs for all supported OCP versions (4.15-4.19) during the build process. This provides:
 
 - **Faster operator selection** - No need to query catalogs at runtime
 - **Version-specific channels** - Each OCP version has its own operator catalog
 - **Offline capability** - Works without internet access after build
 - **Accurate channel information** - Real catalog data instead of static fallbacks
+- **Enhanced compatibility** - Supports multiple catalog formats including index.yaml
 
 **Build Options:**
-- **Default**: Full catalog fetch (takes 5-10 minutes, provides complete data)
-- **Fast build**: Use `--skip-catalogs` flag (uses fallback data, builds in 2-3 minutes)
+- **Default (Fast)**: No catalog fetch (uses fallback data, builds in 2-3 minutes)
+- **Complete build**: Use `--fetch-catalogs` flag (takes 5-10 minutes, provides complete data)
 
 **Supported Catalogs:**
 - Red Hat Operator Index
 - Certified Operator Index  
 - Community Operator Index
-- Marketplace Operator Index
+
+**Catalog Processing:**
+- **Multi-format support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
+- **Robust extraction**: Gracefully handles non-standard operator structures
+- **Complete coverage**: Processes all operators including edge cases like lightspeed-operator
 
 ### Alternative: Podman Compose
 
@@ -127,34 +138,6 @@ docker-compose logs -f
 docker-compose down
 ```
 
-## 🆕 Recent Improvements
-
-### Enhanced Operator Configuration
-- **Dynamic Operator Discovery**: Operator packages and channels are dynamically queried from real catalogs
-- **Dropdown Selection**: Operator packages and channels use dropdown lists instead of text input
-- **Real-time Updates**: New operators and channels appear automatically without code changes
-- **Pre-fetched Catalogs**: Operator catalogs pre-fetched during build for fast access
-
-### Code Quality & Performance
-- **ESLint & Prettier**: Added code linting and formatting tools
-- **Compression**: Server responses are compressed for better performance
-- **Caching**: Static files and API responses are cached
-- **Error Handling**: Improved error handling and user feedback
-- **Logging**: Enhanced request logging for better debugging
-
-### New API Endpoints
-- `/api/catalogs` - Get available operator catalogs
-- `/api/operators` - Get all available operators (dynamic)
-- `/api/operator-channels/:operator` - Get channels for specific operator (dynamic)
-- `/api/system/info` - Get system information and health status
-
-### Operator Catalog Management
-The application uses pre-fetched operator catalogs:
-
-- Pre-fetched operator catalogs for fast access
-- In-memory caching of catalog data
-- Fallback to static data if pre-fetched data unavailable
-
 ## 🔧 Manual Setup (Advanced Users Only)
 
 If you prefer to run the application directly on your host system:
@@ -183,6 +166,8 @@ npm start
 - **History Tracking**: View and analyze past operations
 - **Log Management**: Centralized logging with search and filtering
 - **Settings Management**: Configure application preferences
+- **Multi-Architecture Support**: Automatic detection and support for AMD64 and ARM64
+- **Enhanced Catalog Processing**: Multi-format support for all operator catalog types
 
 ### 🔧 Technical Features
 - **Real-time Updates**: Live status updates during operations
@@ -190,6 +175,9 @@ npm start
 - **Error Handling**: Comprehensive error reporting and recovery
 - **Responsive Design**: Works on desktop and mobile devices
 - **RESTful API**: Full API for integration with other tools
+- **Dynamic Operator Discovery**: Real-time query of operator catalogs
+- **Smart Operator Selection**: Dropdown lists with dynamic operator packages and channels
+- **Multi-Format Catalog Support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
 
 ### 🛡️ Security Features
 - **Input Validation**: Comprehensive validation of all inputs
@@ -324,15 +312,15 @@ npm run server
 The application provides a comprehensive RESTful API at `http://localhost:3001/api/`. For detailed API documentation including all endpoints, request/response formats, and examples, see [API.md](API.md).
 
 **Key Endpoints:**
-- `GET /api/system/info` - System health check and information
+- `GET /api/system/info` - System health check and information (includes architecture detection)
 - `GET /api/stats` - Application statistics
 - `GET /api/config/list` - List configurations
 - `POST /api/config/save` - Create/save configuration
 - `GET /api/operations` - List operations
 - `POST /api/operations/start` - Start operation
 - `GET /api/catalogs` - Get available operator catalogs
-- `GET /api/operators` - Get available operators
-- `GET /api/operator-channels/:operator` - Get channels for specific operator
+- `GET /api/operators` - Get available operators (dynamic discovery)
+- `GET /api/operator-channels/:operator` - Get channels for specific operator (dynamic)
 
 ## 🤝 Contributing
 
@@ -353,16 +341,6 @@ For issues and questions:
 2. Review the application logs
 3. Open an issue on GitHub
 
-## 🔄 Version History
-
-### v2.0.0
-- Complete rewrite for oc-mirror v2
-- Containerized deployment
-- Modern React interface
-- Real-time operation monitoring
-- Enhanced error handling
-- Pre-fetched operator catalogs with in-memory caching
-
 ## 🔧 Version Compatibility
 
 ### Supported oc-mirror Versions
@@ -378,4 +356,8 @@ For issues and questions:
 ### Container Runtime Requirements
 - **Docker**: 20.10+ ✅ Supported
 - **Podman**: 4.0+ ✅ Supported
-- **Node.js**: 18+ (included in container) 
+- **Node.js**: 18+ (included in container)
+
+### Architecture Support
+- **AMD64 (x86_64)**: ✅ Fully supported
+- **ARM64 (aarch64)**: ✅ Fully supported 

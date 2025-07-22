@@ -65,9 +65,12 @@ oc-mirror-web-app/
 #### 2. Mirror Configuration
 - **Platform Channels**: Configure OpenShift Container Platform channels to mirror
 - **Dynamic Operator Discovery**: Real-time query of operator catalogs using `oc-mirror`
-- **Smart Package Selection**: Dropdown lists with dynamic operator packages and channels
+- **Smart Operator Selection**: Dropdown lists with dynamic operator packages and channels
 - **Real-time Updates**: New operators and channels appear automatically without code changes
 - **Pre-fetched Catalogs**: Operator catalogs pre-fetched during build
+- **Multi-Format Support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
+- **Robust Processing**: Gracefully handles non-standard operator structures
+- **Complete Coverage**: Processes all operators including edge cases like lightspeed-operator
 - **Additional Images**: Include custom container images
 - **YAML Preview**: Real-time preview of generated configuration
 - **Configuration Management**: Save, load, and manage multiple configurations
@@ -165,7 +168,6 @@ npm run server
 - Red Hat operator catalogs
 - Certified operator catalogs
 - Community operator catalogs
-- Marketplace operator catalogs
 - Package and channel selection
 - Version constraints
 
@@ -232,6 +234,7 @@ npm run server
 - No host dependencies required
 - Includes Node.js, oc, and oc-mirror v2
 - Consistent environment across platforms
+- Multi-architecture support (AMD64, ARM64)
 
 ### 🔒 Security
 - Non-root user execution
@@ -243,11 +246,13 @@ npm run server
 - Automatic runtime detection
 - Persistent data storage
 - Health monitoring
+- Flexible build options (fast vs complete)
 
 ### 🔄 Maintenance
 - Easy updates and rebuilds
 - Version control for dependencies
 - Consistent behavior across environments
+- Enhanced catalog processing with multi-format support
 
 
 

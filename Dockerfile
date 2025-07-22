@@ -25,8 +25,8 @@ RUN npm run build
 # Production stage
 FROM node:20 AS production
 
-# Set build argument for architecture (default to amd64)
-ARG TARGETARCH=amd64
+# Detect architecture automatically
+ARG TARGETARCH
 
 # Upgrade npm to latest
 RUN npm install -g npm@latest
@@ -43,11 +43,13 @@ RUN apt-get update && apt-get install -y \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Set URLs for oc and oc-mirror based on architecture
-ENV OC_URL_AMD64="https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/openshift-client-linux.tar.gz"
-ENV OC_URL_ARM64="https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/openshift-client-linux-arm64.tar.gz"
-ENV OCMIRROR_URL_AMD64="https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/latest/oc-mirror.rhel9.tar.gz"
-ENV OCMIRROR_URL_ARM64="https://mirror.openshift.com/pub/openshift-v4/aarch64/clients/ocp/latest/oc-mirror.rhel9.tar.gz"
+# Multi-architecture OpenShift client downloads
+# Supports AMD64 and ARM64 architectures
+# Uses the new multi-architecture mirror URLs for better architecture detection
+ENV OC_URL_AMD64="https://mirror.openshift.com/pub/openshift-v4/multi/clients/ocp/stable/amd64/openshift-client-linux.tar.gz"
+ENV OC_URL_ARM64="https://mirror.openshift.com/pub/openshift-v4/multi/clients/ocp/stable/arm64/openshift-client-linux.tar.gz"
+ENV OCMIRROR_URL_AMD64="https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/oc-mirror.rhel9.tar.gz"
+ENV OCMIRROR_URL_ARM64="https://mirror.openshift.com/pub/openshift-v4/aarch64/clients/ocp/stable/oc-mirror.rhel9.tar.gz"
 
 # Download and install oc and oc-mirror for the correct architecture
 RUN if [ "$TARGETARCH" = "arm64" ]; then \

@@ -85,9 +85,10 @@ The containerized version includes:
 - ✅ **All dependencies** pre-installed
 - ✅ **Persistent data storage**
 - ✅ **Health monitoring**
-- ✅ **Pre-fetched operator catalogs** (fast catalog access)
+- ✅ **Multi-architecture support** (AMD64, ARM64)
 - ✅ **Pre-fetched operator catalogs** (fast access to operator data)
 - ✅ **Enhanced performance** (compression, error handling, logging)
+- ✅ **Multi-format catalog processing** (supports all operator catalog formats)
 
 ## 🔧 Container Management
 
@@ -98,16 +99,20 @@ The containerized version includes:
 # Stop the application
 ./container-run.sh --stop
 
-# Rebuild and restart
-./container-run.sh
+# Build image only
+./container-run.sh --build-only
+
+# Run container only (assumes image exists)
+./container-run.sh --run-only
 
 # Check which container engine is detected
 ./container-run.sh --engine
 
-# Shell access to container
-podman exec -it oc-mirror-web-app /bin/sh
-# or
-docker exec -it oc-mirror-web-app /bin/sh
+# Build with catalog fetching (complete data, slower build)
+./container-run.sh --fetch-catalogs
+
+# Build without fetching catalogs (fast build, uses fallback data)
+./container-run.sh
 ```
 
 ## 📁 Data Persistence
