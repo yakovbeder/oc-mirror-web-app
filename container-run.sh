@@ -258,6 +258,7 @@ case "${1:-}" in
         echo "  --run-only     Only run the container (assumes image exists)"
         echo "  --stop         Stop and remove the container"
         echo "  --logs         Show container logs"
+        echo "  --status       Show container status"
         echo "  --engine       Show detected container engine"
         echo "  --fetch-catalogs Fetch operator catalogs during build (slower but complete)"
         echo ""
@@ -313,6 +314,11 @@ case "${1:-}" in
     --engine)
         detect_container_runtime
         echo "Detected container engine: $CONTAINER_ENGINE"
+        exit 0
+        ;;
+    --status)
+        detect_container_runtime
+        show_status
         exit 0
         ;;
     *)

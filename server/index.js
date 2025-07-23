@@ -292,12 +292,20 @@ async function queryOperatorCatalog(catalogUrl) {
 
 async function queryOperatorChannels(catalogUrl, operatorName) {
   try {
-    // Try to use pre-fetched catalog data first
+    // Extract catalog type and version from URL
+    const catalogType = getCatalogNameFromUrl(catalogUrl);
+    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+    
+    // First, try to read the actual catalog data from the catalog-data directory
+    const actualChannels = await getActualChannelsFromCatalog(catalogType, catalogVersion, operatorName);
+    if (actualChannels && actualChannels.length > 0) {
+      console.log(`Using actual catalog data for ${operatorName} from ${catalogVersion} catalog`);
+      return actualChannels;
+    }
+    
+    // Fallback to pre-fetched catalog data
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
-      // Extract catalog type and version from URL
-      const catalogType = getCatalogNameFromUrl(catalogUrl);
-      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
       const key = `${operatorName}:${catalogType}:${catalogVersion}`;
       
       if (catalogData.channels[key]) {
@@ -306,12 +314,8 @@ async function queryOperatorChannels(catalogUrl, operatorName) {
       }
     }
     
-    // Extract catalog version from URL to determine appropriate channels
-    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
-    console.log(`Getting channels for ${operatorName} from ${catalogVersion} catalog`);
-    
-    // Use comprehensive static data based on actual catalog information
-    // This data is based on real catalog.json files from Red Hat operator catalogs
+    // Final fallback to comprehensive static data
+    console.log(`Using comprehensive static data for ${operatorName} from ${catalogVersion} catalog`);
     return getComprehensiveStaticChannels(operatorName, catalogVersion);
   } catch (error) {
     console.error(`Error querying channels for ${operatorName} from ${catalogUrl}:`, error);
@@ -322,8 +326,14 @@ async function queryOperatorChannels(catalogUrl, operatorName) {
 
 // Helper function to extract catalog name from URL
 function getCatalogNameFromUrl(catalogUrl) {
-  const parts = catalogUrl.split('/');
-  return parts[parts.length - 1];
+  if (catalogUrl.includes('redhat-operator-index')) {
+    return 'redhat-operator-index';
+  } else if (catalogUrl.includes('certified-operator-index')) {
+    return 'certified-operator-index';
+  } else if (catalogUrl.includes('community-operator-index')) {
+    return 'community-operator-index';
+  }
+  return 'redhat-operator-index'; // Default
 }
 
 // Helper function to get catalog description
@@ -334,6 +344,114 @@ function getCatalogDescription(catalogType) {
     'community-operator-index': 'Community operators'
   };
   return descriptions[catalogType] || 'Unknown catalog type';
+}
+
+// Function to read actual channels from catalog data
+async function getActualChannelsFromCatalog(catalogType, catalogVersion, operatorName) {
+  try {
+    // Use pre-fetched catalog data instead of reading individual files
+    const catalogData = await loadPreFetchedCatalogData();
+    if (catalogData) {
+      const key = `${catalogType}:${catalogVersion}`;
+      const operators = catalogData.operators[key];
+      
+      if (operators) {
+        const operator = operators.find(op => op.name === operatorName);
+        if (operator) {
+          // Convert the channels array to the expected format
+          const channels = [];
+          if (operator.channels && Array.isArray(operator.channels)) {
+            // The channels array contains channel names as strings
+            operator.channels.forEach(channelName => {
+              if (typeof channelName === 'string') {
+                channels.push({ name: channelName });
+              }
+            });
+          }
+          
+          console.log(`Found ${channels.length} channels for ${operatorName} in ${catalogType}:${catalogVersion} using pre-fetched data`);
+          return channels;
+        }
+      }
+    }
+    
+    // Fallback to reading individual catalog.json file if pre-fetched data not available
+    const fs = require('fs').promises;
+    const path = require('path');
+    
+    // Construct the path to the operator's catalog.json file
+    const catalogPath = path.join(__dirname, `../catalog-data/${catalogType}/${catalogVersion}/configs/${operatorName}/catalog.json`);
+    
+    // Check if the file exists
+    try {
+      await fs.access(catalogPath);
+    } catch (error) {
+      console.log(`Catalog file not found for ${operatorName} in ${catalogType}:${catalogVersion}`);
+      return null;
+    }
+    
+    // Read the catalog.json file
+    const catalogContent = await fs.readFile(catalogPath, 'utf8');
+    
+    // Parse the JSON content (it can contain single JSON object or multiple JSON objects concatenated together)
+    const channels = [];
+    
+    // Always try parsing as multiple concatenated JSON objects first, as this is more common
+    // Split the content by JSON object boundaries
+    // Look for patterns like }}{" to find where one JSON object ends and another begins
+    const jsonObjects = catalogContent.split('}{');
+    
+    for (let i = 0; i < jsonObjects.length; i++) {
+      let jsonStr = jsonObjects[i];
+      
+      // Add back the braces that were removed by the split
+      if (i === 0) {
+        // First object: add closing brace
+        jsonStr += '}';
+      } else if (i === jsonObjects.length - 1) {
+        // Last object: add opening brace
+        jsonStr = '{' + jsonStr;
+      } else {
+        // Middle objects: add both braces
+        jsonStr = '{' + jsonStr + '}';
+      }
+      
+      try {
+        const obj = JSON.parse(jsonStr);
+        // Look for channel objects
+        if (obj.schema === 'olm.channel' && obj.name) {
+          channels.push({ name: obj.name });
+        }
+      } catch (parseError) {
+        // Skip invalid JSON objects
+        continue;
+      }
+    }
+    
+    // If no channels found with multiple objects approach, try single object approach
+    if (channels.length === 0) {
+      try {
+        const singleObj = JSON.parse(catalogContent);
+        if (singleObj.schema === 'olm.channel' && singleObj.name) {
+          channels.push({ name: singleObj.name });
+        }
+      } catch (singleParseError) {
+        // Single object parsing failed, but that's okay since we already tried multiple objects
+      }
+    }
+    
+    // Remove duplicates and sort
+    const uniqueChannels = channels.filter((channel, index, self) => 
+      index === self.findIndex(c => c.name === channel.name)
+    );
+    
+    console.log(`Found ${uniqueChannels.length} channels for ${operatorName} in ${catalogType}:${catalogVersion} using file reading`);
+    return uniqueChannels;
+    
+  } catch (error) {
+    console.error(`Error reading catalog data for ${operatorName} in ${catalogType}:${catalogVersion}:`, error.message);
+    return null;
+  }
 }
 
 // Comprehensive static data based on actual Red Hat catalogs
@@ -413,14 +531,32 @@ function getStaticOperators(catalogUrl) {
 // Data extracted from real catalog.json files using the file-based catalog method
 function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') {
   const comprehensiveChannels = {
-    'advanced-cluster-management': [
-      { name: 'release-2.13' },  // Latest channel
-      { name: 'release-2.12' },
-      { name: 'release-2.11' },
-      { name: 'release-2.10' },
-      { name: 'release-2.9' },
-      { name: 'release-2.8' }
-    ],
+    'advanced-cluster-management': (catalogVersion) => {
+      // Version-specific channels for ACM operator
+      const versionMap = {
+        'v4.15': [
+          { name: 'release-2.13' },  // Latest channel (default)
+          { name: 'release-2.10' }
+        ],
+        'v4.16': [
+          { name: 'release-2.13' },  // Latest channel (default)
+          { name: 'release-2.10' }
+        ],
+        'v4.17': [
+          { name: 'release-2.13' },  // Latest channel (default)
+          { name: 'release-2.11' }
+        ],
+        'v4.18': [
+          { name: 'release-2.13' },  // Latest channel (default)
+          { name: 'release-2.12' }
+        ],
+        'v4.19': [
+          { name: 'release-2.13' },  // Latest channel (default)
+          { name: 'release-2.13' }
+        ]
+      };
+      return versionMap[catalogVersion] || versionMap['v4.15'];
+    },
     'amq-streams': [
       { name: 'amq-streams-2.6.x' },  // Latest channel
       { name: 'amq-streams-2.5.x' },
@@ -439,13 +575,32 @@ function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') 
       { name: '1.9.x' },
       { name: '1.8.x' }
     ],
-    'ansible-automation-platform-operator': [
-      { name: 'stable-2.5' },  // Latest channel
-      { name: 'stable-2.4' },
-      { name: 'stable-2.3' },
-      { name: 'stable-2.2' },
-      { name: 'stable-2.1' }
-    ],
+    'ansible-automation-platform-operator': (catalogVersion) => {
+      // Version-specific channels for Ansible Automation Platform operator
+      const versionMap = {
+        'v4.15': [
+          { name: 'stable-2.5' },  // Latest channel (default)
+          { name: 'stable-2.4' }
+        ],
+        'v4.16': [
+          { name: 'stable-2.5' },  // Latest channel (default)
+          { name: 'stable-2.4' }
+        ],
+        'v4.17': [
+          { name: 'stable-2.5' },  // Latest channel (default)
+          { name: 'stable-2.4' }
+        ],
+        'v4.18': [
+          { name: 'stable-2.5' },  // Latest channel (default)
+          { name: 'stable-2.4' }
+        ],
+        'v4.19': [
+          { name: 'stable-2.5' },  // Latest channel (default)
+          { name: 'stable-2.5' }
+        ]
+      };
+      return versionMap[catalogVersion] || versionMap['v4.15'];
+    },
     'cert-manager': [
       { name: 'stable-v1.14' },  // Latest channel
       { name: 'stable-v1.13' },
@@ -485,21 +640,44 @@ function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') 
       { name: 'stable-1.67' },
       { name: 'stable-1.66' }
     ],
-    'local-storage-operator': [
-      { name: 'stable' },
-      { name: 'stable-4.15' },
-      { name: 'stable-4.14' }
-    ],
+    'local-storage-operator': (catalogVersion) => {
+      // Local storage operator uses the same channels across all versions
+      return [
+        { name: 'stable' },  // Default channel
+        { name: 'stable-4.15' },
+        { name: 'stable-4.14' }
+      ];
+    },
     'node-problem-detector': [
       { name: 'stable' },
       { name: 'stable-0.1' }
     ],
-    'odf-operator': [
-      { name: 'stable-4.15' },
-      { name: 'stable-4.14' },
-      { name: 'stable-4.13' },
-      { name: 'stable-4.12' }
-    ],
+    'odf-operator': (catalogVersion) => {
+      // Version-specific channels for ODF operator
+      const versionMap = {
+        'v4.15': [
+          { name: 'stable-4.15' },  // Latest channel (default)
+          { name: 'stable-4.14' }
+        ],
+        'v4.16': [
+          { name: 'stable-4.16' },  // Latest channel (default)
+          { name: 'stable-4.15' }
+        ],
+        'v4.17': [
+          { name: 'stable-4.17' },  // Latest channel (default)
+          { name: 'stable-4.16' }
+        ],
+        'v4.18': [
+          { name: 'stable-4.18' },  // Latest channel (default)
+          { name: 'stable-4.17' }
+        ],
+        'v4.19': [
+          { name: 'stable-4.18' },  // Latest channel (default)
+          { name: 'stable-4.18' }
+        ]
+      };
+      return versionMap[catalogVersion] || versionMap['v4.15'];
+    },
     'openshift-gitops-operator': [
       { name: 'stable-1.11' },  // Latest channel
       { name: 'stable-1.10' },
@@ -526,6 +704,26 @@ function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') 
       { name: 'stable-1.1' },
       { name: 'stable-1.0' }
     ],
+    'rhbk-operator': (catalogVersion) => {
+      // Version-specific channels for RHBK operator
+      if (catalogVersion === 'v4.18') {
+        return [
+          { name: 'stable-v26.2' },  // Latest channel (default)
+          { name: 'stable-v26.0' },
+          { name: 'stable-v26' },
+          { name: 'stable-v24.0' },
+          { name: 'stable-v24' },
+          { name: 'stable-v22.0' },
+          { name: 'stable-v22' }
+        ];
+      } else {
+        // For v4.15, v4.16, v4.17, v4.19 - only stable-v22 is available
+        return [
+          { name: 'stable-v22' },  // Only available channel
+          { name: 'stable-v22.0' }
+        ];
+      }
+    },
     'service-mesh-operator': [
       { name: 'stable-2.6' },  // Latest channel
       { name: 'stable-2.5' },
@@ -544,13 +742,32 @@ function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') 
       { name: 'stable-0.14' },
       { name: 'stable-0.13' }
     ],
-    '3scale-operator': [
-      { name: 'threescale-2.15' },  // Latest channel
-      { name: 'threescale-2.14' },
-      { name: 'threescale-2.13' },
-      { name: 'threescale-2.12' },
-      { name: 'threescale-2.11' }
-    ],
+    '3scale-operator': (catalogVersion) => {
+      // Version-specific channels for 3scale operator
+      const versionMap = {
+        'v4.15': [
+          { name: 'threescale-2.15' },  // Latest channel (default)
+          { name: 'threescale-2.13' }
+        ],
+        'v4.16': [
+          { name: 'threescale-2.15' },  // Latest channel (default)
+          { name: 'threescale-2.13' }
+        ],
+        'v4.17': [
+          { name: 'threescale-2.15' },  // Latest channel (default)
+          { name: 'threescale-2.13' }
+        ],
+        'v4.18': [
+          { name: 'threescale-2.15' },  // Latest channel (default)
+          { name: 'threescale-2.13' }
+        ],
+        'v4.19': [
+          { name: 'threescale-2.13' },  // Latest channel (default)
+          { name: 'threescale-mas' }
+        ]
+      };
+      return versionMap[catalogVersion] || versionMap['v4.15'];
+    },
     'amq-broker-rhel8': [
       { name: '7.12.x' },  // Latest channel
       { name: '7.11.x' },
@@ -644,10 +861,32 @@ function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') 
       { name: 'stable' },
       { name: 'stable-0.1' }
     ],
-    'ansible-cloud-addons-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
+    'ansible-cloud-addons-operator': (catalogVersion) => {
+      // Version-specific channels for Ansible Cloud Addons operator
+      const versionMap = {
+        'v4.15': [
+          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
+          { name: 'stable-2.4-cluster-scoped' }
+        ],
+        'v4.16': [
+          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
+          { name: 'stable-2.4-cluster-scoped' }
+        ],
+        'v4.17': [
+          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
+          { name: 'stable-2.4-cluster-scoped' }
+        ],
+        'v4.18': [
+          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
+          { name: 'stable-2.5-cluster-scoped' }
+        ],
+        'v4.19': [
+          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
+          { name: 'stable-2.5-cluster-scoped' }
+        ]
+      };
+      return versionMap[catalogVersion] || versionMap['v4.15'];
+    },
     'apicast-operator': [
       { name: '3scale-2.13' },
       { name: '3scale-2.12' },
@@ -655,7 +894,14 @@ function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') 
     ]
   };
   
-  return comprehensiveChannels[operatorName] || [];
+  const channels = comprehensiveChannels[operatorName];
+  
+  // Handle function-based channel configurations (like RHBK operator)
+  if (typeof channels === 'function') {
+    return channels(catalogVersion);
+  }
+  
+  return channels || [];
 }
 
 function getStaticChannels(operatorName) {
@@ -917,19 +1163,70 @@ app.get('/api/catalogs', async (req, res) => {
 
 app.get('/api/operators', async (req, res) => {
   try {
-    const { catalog } = req.query;
-    const cache = await updateOperatorCache();
+    const { catalog, detailed } = req.query;
     
     if (catalog) {
-      // Filter operators by catalog
+      // Use pre-fetched catalog data for comprehensive information
+      const catalogData = await loadPreFetchedCatalogData();
+      if (catalogData) {
+        // Extract catalog type and version from URL
+        const catalogType = getCatalogNameFromUrl(catalog);
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.15';
+        const key = `${catalogType}:${catalogVersion}`;
+        
+        const operators = catalogData.operators[key];
+        if (operators) {
+          if (detailed === 'true') {
+            // Return detailed operator information with channels
+            const detailedOperators = operators.map(operator => {
+              const normalizedChannels = normalizeChannels(operator.channels || [], operator.name);
+              return {
+                name: operator.name,
+                defaultChannel: operator.defaultChannel,
+                channels: normalizedChannels,
+                allChannels: normalizedChannels.map(ch => ch.name),
+                catalog: operator.catalog,
+                ocpVersion: operator.ocpVersion,
+                catalogUrl: operator.catalogUrl
+              };
+            });
+            res.json(detailedOperators);
+          } else {
+            // Return just operator names
+            res.json(operators.map(operator => operator.name));
+          }
+          return;
+        }
+      }
+      
+      // Fallback to cache if pre-fetched data not available
+      const cache = await updateOperatorCache();
       const allOperators = Object.values(cache.operators);
       const filteredOperators = allOperators
-        .filter(operator => operator.catalog === catalog)
-        .map(operator => operator.name);
+        .filter(operator => operator.catalog === catalog);
       
-      res.json(filteredOperators);
+      if (detailed === 'true') {
+        // Return detailed operator information with channels
+        const detailedOperators = filteredOperators.map(operator => {
+          const normalizedChannels = normalizeChannels(operator.channels || [], operator.name);
+          return {
+            name: operator.name,
+            defaultChannel: operator.defaultChannel,
+            channels: normalizedChannels,
+            allChannels: normalizedChannels.map(ch => ch.name),
+            catalog: operator.catalog,
+            ocpVersion: operator.ocpVersion,
+            catalogUrl: operator.catalogUrl
+          };
+        });
+        res.json(detailedOperators);
+      } else {
+        // Return just operator names
+        res.json(filteredOperators.map(operator => operator.name));
+      }
     } else {
       // Return all unique operator names if no catalog specified
+      const cache = await updateOperatorCache();
       const uniqueOperators = [...new Set(Object.values(cache.operators).map(op => op.name))];
       res.json(uniqueOperators);
     }
@@ -974,13 +1271,140 @@ app.post('/api/operators/refresh-cache', async (req, res) => {
   }
 });
 
+// Helper function to normalize channel format
+// Helper function to filter out version-specific channels
+function filterGenericChannels(channelNames, operatorName) {
+  return channelNames.filter(channel => {
+    // Skip empty channels
+    if (!channel || !channel.trim()) return false;
+    
+    // Skip channels that contain the operator name followed by a version pattern
+    // This filters out channels like "advanced-cluster-management.v2.10.0"
+    if (operatorName && channel.includes(`${operatorName}.`)) return false;
+    
+    // Skip channels that look like version numbers (contain dots and numbers)
+    // This filters out channels like "v2.10.0", "1.0.1", etc.
+    if (/^v?\d+\.\d+\.\d+/.test(channel)) return false;
+    
+    // Keep generic channels like "stable", "alpha", "release-2.12", etc.
+    return true;
+  });
+}
+
+function normalizeChannels(channels, operatorName = null) {
+  if (!channels || !Array.isArray(channels)) {
+    return [];
+  }
+  
+  let channelNames = [];
+  
+  // Handle case where channels might be a single string with spaces (from our updated script)
+  if (channels.length === 1 && typeof channels[0] === 'string') {
+    if (channels[0].includes('\n')) {
+      channelNames = channels[0].split('\n').filter(line => line.trim()).map(channel => channel.trim());
+    } else if (channels[0].includes(' ')) {
+      channelNames = channels[0].split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
+    } else {
+      channelNames = [channels[0]];
+    }
+  } else {
+    // Handle array of channels
+    channelNames = channels.map(channel => {
+      if (typeof channel === 'string') {
+        return channel;
+      } else if (channel && typeof channel === 'object' && channel.name) {
+        return channel.name;
+      } else {
+        return String(channel);
+      }
+    });
+  }
+  
+  // Filter out version-specific channels
+  const filteredChannels = filterGenericChannels(channelNames, operatorName);
+  
+  // Convert back to channel objects
+  return filteredChannels.map(channel => ({ name: channel }));
+}
+
+// New endpoint to get operator channel information
 app.get('/api/operator-channels/:operator', async (req, res) => {
   try {
     const { operator } = req.params;
+    const { catalogUrl } = req.query;
     
-    // Check cache first
+    // Use pre-fetched catalog data
+    const catalogData = await loadPreFetchedCatalogData();
+    if (catalogData) {
+      // If catalogUrl is provided, extract catalog type and version
+      if (catalogUrl) {
+        const catalogType = getCatalogNameFromUrl(catalogUrl);
+        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+        const key = `${catalogType}:${catalogVersion}`;
+        
+        const operators = catalogData.operators[key];
+        if (operators) {
+          const operatorData = operators.find(op => op.name === operator);
+          if (operatorData) {
+            const normalizedChannels = normalizeChannels(operatorData.channels || [], operatorData.name);
+            return res.json({
+              name: operatorData.name,
+              defaultChannel: operatorData.defaultChannel,
+              channels: normalizedChannels,
+              allChannels: normalizedChannels.map(ch => ch.name),
+              catalog: operatorData.catalog,
+              ocpVersion: operatorData.ocpVersion,
+              catalogUrl: operatorData.catalogUrl
+            });
+          }
+        }
+      } else {
+        // Search across all catalogs
+        for (const [key, operators] of Object.entries(catalogData.operators)) {
+          const operatorData = operators.find(op => op.name === operator);
+          if (operatorData) {
+            const normalizedChannels = normalizeChannels(operatorData.channels || [], operatorData.name);
+            return res.json({
+              name: operatorData.name,
+              defaultChannel: operatorData.defaultChannel,
+              channels: normalizedChannels,
+              allChannels: normalizedChannels.map(ch => ch.name),
+              catalog: operatorData.catalog,
+              ocpVersion: operatorData.ocpVersion,
+              catalogUrl: operatorData.catalogUrl
+            });
+          }
+        }
+      }
+    }
+    
+    // Fallback response if operator not found
+    res.status(404).json({ error: 'Operator not found' });
+    
+  } catch (error) {
+    console.error(`Error getting channel info for ${operator}:`, error);
+    res.status(500).json({ error: 'Failed to get operator channel information' });
+  }
+});
+
+app.get('/api/operator-channels/:operator', async (req, res) => {
+  try {
+    const { operator } = req.params;
+    const { catalogUrl } = req.query;
+    
+    // If catalogUrl is provided, use it directly
+    if (catalogUrl) {
+      const channels = await queryOperatorChannels(catalogUrl, operator);
+      if (channels && Array.isArray(channels) && channels.length > 0) {
+        const normalizedChannels = normalizeChannels(channels, operator);
+        return res.json(normalizedChannels);
+      }
+    }
+    
+    // Check cache first (fallback)
     if (operatorCache.channels[operator] && isCacheValid()) {
-      return res.json(operatorCache.channels[operator]);
+      const normalizedChannels = normalizeChannels(operatorCache.channels[operator], operator);
+      return res.json(normalizedChannels);
     }
     
     // Get operator info from cache
@@ -999,7 +1423,8 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
     if (channels && Array.isArray(channels) && channels.length > 0) {
       // Cache the result
       operatorCache.channels[operator] = channels;
-      res.json(channels);
+      const normalizedChannels = normalizeChannels(channels, operator);
+      res.json(normalizedChannels);
     } else {
       // Fallback to static data
       const fallbackChannels = {
@@ -1027,7 +1452,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       
       const channels = fallbackChannels[operator] || ['stable'];
       // Convert to consistent format with dynamic channels
-      const formattedChannels = channels.map(channel => ({ name: channel }));
+      const formattedChannels = normalizeChannels(channels, operator);
       res.json(formattedChannels);
     }
   } catch (error) {

@@ -26,6 +26,7 @@ const MirrorConfig = () => {
   const [availableOperators, setAvailableOperators] = useState([]);
   const [availableCatalogs, setAvailableCatalogs] = useState([]);
   const [operatorChannels, setOperatorChannels] = useState({});
+  const [detailedOperators, setDetailedOperators] = useState({}); // Store detailed operator info by catalog
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('platform');
 
@@ -103,28 +104,38 @@ const MirrorConfig = () => {
 
   const fetchOperatorsForCatalog = async (catalogUrl) => {
     try {
-      const response = await axios.get(`/api/operators?catalog=${encodeURIComponent(catalogUrl)}`);
-      return response.data;
+      const response = await axios.get(`/api/operators?catalog=${encodeURIComponent(catalogUrl)}&detailed=true`);
+      const detailedOps = response.data;
+      
+      // Store detailed operator information
+      setDetailedOperators(prev => ({
+        ...prev,
+        [catalogUrl]: detailedOps
+      }));
+      
+      // Return just the operator names for backward compatibility
+      return detailedOps.map(op => op.name);
     } catch (error) {
       console.error('Error fetching operators for catalog:', error);
       return [];
     }
   };
 
-  const fetchOperatorChannels = async (operatorName) => {
-    if (operatorChannels[operatorName]) {
-      return operatorChannels[operatorName];
+  const fetchOperatorChannels = async (operatorName, catalogUrl) => {
+    const key = `${operatorName}:${catalogUrl}`;
+    if (operatorChannels[key]) {
+      return operatorChannels[key];
     }
     
     try {
-      const response = await axios.get(`/api/operator-channels/${operatorName}`);
+      const response = await axios.get(`/api/operator-channels/${operatorName}?catalogUrl=${encodeURIComponent(catalogUrl)}`);
       setOperatorChannels(prev => ({
         ...prev,
-        [operatorName]: response.data
+        [key]: response.data
       }));
       return response.data;
     } catch (error) {
-      console.error(`Error fetching channels for ${operatorName}:`, error);
+      console.error(`Error fetching channels for ${operatorName} from ${catalogUrl}:`, error);
       toast.error(`Failed to load channels for ${operatorName}`);
       return ['stable'];
     }
@@ -260,33 +271,12 @@ const MirrorConfig = () => {
 
     // If updating package name, fetch channels for the new package
     if (field === 'name' && value) {
-      await fetchOperatorChannels(value);
+      const operator = config.mirror.operators[operatorIndex];
+      await fetchOperatorChannels(value, operator.catalog);
     }
   };
 
-  const addOperatorPackageChannel = (operatorIndex, packageIndex) => {
-    setConfig(prev => ({
-      ...prev,
-      mirror: {
-        ...prev.mirror,
-        operators: prev.mirror.operators.map((op, i) => 
-          i === operatorIndex 
-            ? { 
-                ...op, 
-                packages: op.packages.map((pkg, pIndex) => 
-                  pIndex === packageIndex 
-                    ? { 
-                        ...pkg, 
-                        channels: [...(pkg.channels || []), { name: '' }]
-                      } 
-                    : pkg
-                )
-              }
-            : op
-        )
-      }
-    }));
-  };
+
 
   const removeOperatorPackageChannel = (operatorIndex, packageIndex, channelIndex) => {
     setConfig(prev => ({
@@ -692,6 +682,96 @@ const MirrorConfig = () => {
                   
                   <div className="form-group">
                     <label>Channels for {pkg.name || 'this operator'}</label>
+                    
+                    {/* Display comprehensive channel information */}
+                    {pkg.name && (() => {
+                      const operator = config.mirror.operators[opIndex];
+                      const detailedOps = detailedOperators[operator.catalog];
+                      const operatorInfo = detailedOps?.find(op => op.name === pkg.name);
+                      
+                      if (operatorInfo) {
+                        return (
+                          <div className="operator-channels-info" style={{ 
+                            background: '#f8f9fa', 
+                            padding: '1rem', 
+                            borderRadius: '0.375rem',
+                            marginBottom: '1rem'
+                          }}>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                              <strong>Default Channel:</strong> 
+                              <span style={{ 
+                                background: '#28a745', 
+                                color: 'white', 
+                                padding: '0.25rem 0.5rem', 
+                                borderRadius: '0.25rem',
+                                marginLeft: '0.5rem',
+                                fontSize: '0.875rem'
+                              }}>
+                                {operatorInfo.defaultChannel}
+                              </span>
+                            </div>
+                            <div>
+                              <strong>All Available Channels ({operatorInfo.allChannels?.length || 0}):</strong>
+                              <small style={{ color: '#6c757d', marginLeft: '0.5rem' }}>
+                                Click on channels to add them to your selection
+                              </small>
+                              <div style={{ 
+                                maxHeight: '200px', 
+                                overflowY: 'auto', 
+                                marginTop: '0.5rem',
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '0.25rem'
+                              }}>
+                                {operatorInfo.allChannels?.map((channel, idx) => (
+                                  <span 
+                                    key={idx} 
+                                    style={{
+                                      background: channel === operatorInfo.defaultChannel ? '#28a745' : '#6c757d',
+                                      color: 'white',
+                                      padding: '0.25rem 0.5rem',
+                                      borderRadius: '0.25rem',
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer',
+                                      opacity: pkg.channels?.some(ch => ch.name === channel) ? 0.5 : 1
+                                    }} 
+                                    title={channel}
+                                    onClick={() => {
+                                      // Add channel if not already selected
+                                      if (!pkg.channels?.some(ch => ch.name === channel)) {
+                                        const newChannel = { name: channel };
+                                        setConfig(prev => ({
+                                          ...prev,
+                                          mirror: {
+                                            ...prev.mirror,
+                                            operators: prev.mirror.operators.map((op, i) => 
+                                              i === opIndex 
+                                                ? { 
+                                                    ...op, 
+                                                    packages: op.packages.map((p, pIndex) => 
+                                                      pIndex === pkgIndex 
+                                                        ? { ...p, channels: [...(p.channels || []), newChannel] }
+                                                        : p
+                                                    )
+                                                  }
+                                                : op
+                                            )
+                                          }
+                                        }));
+                                      }
+                                    }}
+                                  >
+                                    {channel}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    
                     <div className="channels-container">
                       {pkg.channels && pkg.channels.map((channel, channelIndex) => (
                         <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem' }}>
@@ -702,14 +782,16 @@ const MirrorConfig = () => {
                             onChange={(e) => updateOperatorPackageChannel(opIndex, pkgIndex, channelIndex, e.target.value)}
                           >
                             <option value="">Select a channel...</option>
-                            {operatorChannels[pkg.name] && operatorChannels[pkg.name]
-                              .slice()
-                              .sort((a, b) => a.name.localeCompare(b.name))
-                              .map(channel => (
-                                <option key={channel.name} value={channel.name}>
-                                  {channel.name}
+                            {(() => {
+                              const operator = config.mirror.operators[opIndex];
+                              const detailedOps = detailedOperators[operator.catalog];
+                              const operatorInfo = detailedOps?.find(op => op.name === pkg.name);
+                              return operatorInfo?.allChannels?.map(channel => (
+                                <option key={channel} value={channel}>
+                                  {channel} {channel === operatorInfo.defaultChannel ? '(default)' : ''}
                                 </option>
-                              ))}
+                              )) || [];
+                            })()}
                           </select>
                           <button
                             className="btn btn-sm btn-danger"
@@ -719,15 +801,10 @@ const MirrorConfig = () => {
                           </button>
                         </div>
                       ))}
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        onClick={() => addOperatorPackageChannel(opIndex, pkgIndex)}
-                      >
-                        ➕ Add Channel
-                      </button>
+
                     </div>
                     <small className="form-text text-muted">
-                      Leave empty to mirror all channels for this operator
+                      Click on channel tags above to add them
                     </small>
                   </div>
                 </div>

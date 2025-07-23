@@ -158,8 +158,14 @@ process_catalog_data() {
                 operator_name=$(jq -cs -r '.[0] | .name // empty' "$json_file" 2>/dev/null)
                 default_channel=$(jq -cs -r '.[0] | .defaultChannel // empty' "$json_file" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Get channel entries using the reference logic with proper argument passing
-                    channels=$(jq -cs -r --arg channel "$default_channel" '.[] | select(.name==$channel) | .entries[].name // empty' "$json_file" 2>/dev/null)
+                    # Extract all channels using the pattern from user's example
+                    # Look for entries that are channels (not the operator name itself)
+                    channels=$(jq -cs -r '.[] | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | grep -v "^${operator_name}$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    
+                    # If no channels found, try alternative approach looking for channel entries
+                    if [ -z "$channels" ]; then
+                        channels=$(jq -cs -r '.[] | .entries[].name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    fi
                 fi
             elif [ -f "$index_json" ]; then
                 json_file="$index_json"
@@ -167,7 +173,14 @@ process_catalog_data() {
                 operator_name=$(jq -cs -r '.[0] | .name // empty' "$json_file" 2>/dev/null)
                 default_channel=$(jq -cs -r '.[0] | .defaultChannel // empty' "$json_file" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    channels=$(jq -cs -r --arg channel "$default_channel" '.[] | select(.name==$channel) | .entries[].name // empty' "$json_file" 2>/dev/null)
+                    # Extract all channels using the pattern from user's example
+                    # Look for entries that are channels (not the operator name itself)
+                    channels=$(jq -cs -r '.[] | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | grep -v "^${operator_name}$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    
+                    # If no channels found, try alternative approach looking for channel entries
+                    if [ -z "$channels" ]; then
+                        channels=$(jq -cs -r '.[] | .entries[].name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    fi
                 fi
             elif [ -f "$index_yaml" ]; then
                 # Handle index.yaml files (like lightspeed-operator)
@@ -180,7 +193,8 @@ process_catalog_data() {
                 operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
                 default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    channels=$(jq -r '.entries[].name // empty' "$channel_json" 2>/dev/null)
+                    # Extract all channels from channel.json entries
+                    channels=$(jq -r '.entries[].name // empty' "$channel_json" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
                 fi
             elif [ -f "$catalog_yaml" ] || [ -f "$catalog_yml" ]; then
                 # Handle catalog.yaml or catalog.yml files (YAML format)
@@ -222,6 +236,9 @@ process_catalog_data() {
                      ocpVersion: $ocpVersion,
                      catalogUrl: $catalogUrl
                    }' | jq --argjson entry "$(cat)" '. += [$entry]' "$operators_file" > "${operators_file}.tmp" && mv "${operators_file}.tmp" "$operators_file"
+                
+                # Debug output
+                print_status "Successfully extracted operator: $operator_name (default: $default_channel, all channels: $channels)"
             else
                 print_warning "Could not extract operator information from $operator_dir"
             fi
