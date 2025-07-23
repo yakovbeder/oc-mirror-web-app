@@ -156,9 +156,19 @@ show_logs() {
     $CONTAINER_ENGINE logs -f $CONTAINER_NAME
 }
 
+# Parse command argument (only support --command format)
+parse_command() {
+    local cmd="${1:---start}"
+    # Remove leading -- if present
+    cmd="${cmd#--}"
+    echo "$cmd"
+}
+
 # Main function
 main() {
-    case "${1:-start}" in
+    local command=$(parse_command "${1:-start}")
+    
+    case "$command" in
         start)
             print_status "Starting oc-mirror-web-app from Quay.io"
             detect_architecture
@@ -201,21 +211,31 @@ main() {
             ;;
         status)
             check_container_runtime
+            detect_architecture
             show_status
             ;;
         logs)
             check_container_runtime
             show_logs
             ;;
-        *)
-            echo "Usage: $0 {start|stop|restart|status|logs}"
+        help|--help|-h)
+            echo "Usage: $0 {--start|--stop|--restart|--status|--logs}"
             echo ""
             echo "Commands:"
-            echo "  start   - Start the application (default)"
-            echo "  stop    - Stop the application"
-            echo "  restart - Restart the application"
-            echo "  status  - Show container status"
-            echo "  logs    - Show container logs"
+            echo "  --start   - Start the application (default)"
+            echo "  --stop    - Stop the application"
+            echo "  --restart - Restart the application"
+            echo "  --status  - Show container status"
+            echo "  --logs    - Show container logs"
+            echo "  --help, -h - Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown command '$1'"
+            echo ""
+            echo "Usage: $0 {--start|--stop|--restart|--status|--logs}"
+            echo ""
+            echo "Use '$0 --help' for more information"
             exit 1
             ;;
     esac

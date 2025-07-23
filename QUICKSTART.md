@@ -1,5 +1,7 @@
 # Quick Start Guide - OC Mirror v2 Web Application
 
+**Current Version: v3.0**
+
 ## 🚀 Containerized Deployment (Recommended)
 
 This is the **easiest and most reliable** way to run the application. No host dependencies required!
@@ -49,7 +51,19 @@ The script automatically detects whether you have Docker or Podman and uses the 
 ```
 The script automatically detects Docker or Podman and uses the appropriate one.
 
-### Option 2: Podman Compose
+### Option 2: Quay.io Images (Production Ready)
+```bash
+# Make the script executable
+chmod +x quay-run.sh
+
+# Start the application from Quay.io
+./quay-run.sh
+
+# View logs
+./quay-run.sh --logs
+```
+
+### Option 3: Podman Compose
 ```bash
 # Make the script executable
 chmod +x podman-compose.sh
@@ -64,7 +78,7 @@ chmod +x podman-compose.sh
 ./podman-compose.sh down
 ```
 
-### Option 3: Docker Compose
+### Option 4: Docker Compose
 ```bash
 # Start the application
 docker-compose up -d
@@ -89,9 +103,11 @@ The containerized version includes:
 - ✅ **Pre-fetched operator catalogs** (fast access to operator data)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
+- ✅ **Version 3.0 features** (enhanced channel selection, improved UI, better error handling)
 
 ## 🔧 Container Management
 
+### Local Build (container-run.sh)
 ```bash
 # View application logs
 ./container-run.sh --logs
@@ -113,6 +129,24 @@ The containerized version includes:
 
 # Build without fetching catalogs (fast build, uses fallback data)
 ./container-run.sh
+```
+
+### Quay.io Images (quay-run.sh)
+```bash
+# Start the application
+./quay-run.sh
+
+# View logs
+./quay-run.sh --logs
+
+# Stop the application
+./quay-run.sh --stop
+
+# Show status
+./quay-run.sh --status
+
+# Restart the application
+./quay-run.sh --restart
 ```
 
 ## 📁 Data Persistence
@@ -216,22 +250,4 @@ Once the application is running:
 2. **Run Operations**: Execute mirror operations and monitor progress
 3. **Review History**: Check operation history and logs
 
-## 🔧 Manual Setup (Advanced Users)
-
-If you prefer to run without containers:
-
-### Prerequisites
-- Node.js 18+
-- OpenShift CLI (oc)
-- oc-mirror v2
-
-### Installation
-```bash
-# Install dependencies
-npm install
-
-# Start the application
-npm start
-```
-
-The application will be available at http://localhost:3000 
+ 

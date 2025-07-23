@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
-VERSION=$(date +%Y%m%d-%H%M%S)
+VERSION="3.0"  # Semantic versioning
 TAG="${VERSION}"
 
 # Colors for output
@@ -81,6 +81,26 @@ check_quay_login() {
     fi
 }
 
+# Check if image already exists
+check_existing_image() {
+    local quay_tag="${IMAGE_NAME}:${TAG}-${ARCH}"
+    
+    print_status "Checking if image already exists: $quay_tag"
+    
+    if $CONTAINER_ENGINE manifest inspect $quay_tag &> /dev/null; then
+        print_warning "Image $quay_tag already exists on Quay.io"
+        read -p "Do you want to overwrite it? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_status "Build cancelled by user"
+            exit 0
+        fi
+        print_status "Proceeding with overwrite..."
+    else
+        print_success "Image does not exist, proceeding with build"
+    fi
+}
+
 # Build image using container-run.sh
 build_image() {
     print_status "Building image using container-run.sh..."
@@ -134,23 +154,99 @@ tag_and_push() {
     fi
 }
 
+# Clean up local images
+cleanup_local_images() {
+    print_status "Cleaning up local images..."
+    
+    local local_tag="oc-mirror-web-app"
+    
+    if $CONTAINER_ENGINE image exists $local_tag; then
+        $CONTAINER_ENGINE rmi $local_tag
+        print_success "Local image removed: $local_tag"
+    fi
+}
+
+# Display final information
+display_final_info() {
+    print_success "Build and push completed successfully!"
+    echo
+    print_status "Available images on Quay.io:"
+    print_status "  - ${IMAGE_NAME}:${TAG}-${ARCH} (versioned)"
+    print_status "  - ${IMAGE_NAME}:latest-${ARCH} (latest)"
+    echo
+    print_status "Pull commands:"
+    print_status "  $CONTAINER_ENGINE pull ${IMAGE_NAME}:${TAG}-${ARCH}"
+    print_status "  $CONTAINER_ENGINE pull ${IMAGE_NAME}:latest-${ARCH}"
+    echo
+    print_status "Run commands:"
+    print_status "  $CONTAINER_ENGINE run -p 3000:3001 ${IMAGE_NAME}:${TAG}-${ARCH}"
+    print_status "  $CONTAINER_ENGINE run -p 3000:3001 ${IMAGE_NAME}:latest-${ARCH}"
+}
+
+# Show usage
+show_usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --version VERSION    Set custom version (default: $VERSION)"
+    echo "  --no-cleanup         Skip cleanup of local images"
+    echo "  --help               Show this help message"
+    echo
+    echo "Examples:"
+    echo "  $0                    # Build and push with default version"
+    echo "  $0 --version 3.1      # Build and push with custom version"
+    echo "  $0 --no-cleanup       # Build and push without cleanup"
+}
+
+# Parse command line arguments
+parse_arguments() {
+    CLEANUP=true
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --version)
+                VERSION="$2"
+                TAG="$VERSION"
+                shift 2
+                ;;
+            --no-cleanup)
+                CLEANUP=false
+                shift
+                ;;
+            --help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+}
+
 # Main function
 main() {
     print_status "Starting build and push for Quay.io"
     print_status "Image: $IMAGE_NAME"
+    print_status "Version: $VERSION"
     print_status "Tag: $TAG"
     
     detect_architecture
     check_container_runtime
     check_quay_login
+    check_existing_image
     build_image
     tag_and_push
     
-    print_success "Build and push completed successfully!"
-    print_status "Available images:"
-    print_status "  - ${IMAGE_NAME}:${TAG}-${ARCH} (versioned)"
-    print_status "  - ${IMAGE_NAME}:latest-${ARCH} (latest)"
+    if [ "$CLEANUP" = true ]; then
+        cleanup_local_images
+    fi
+    
+    display_final_info
 }
 
-# Run main function
-main "$@" 
+# Parse arguments and run main function
+parse_arguments "$@"
+main 

@@ -2,6 +2,8 @@
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. This application provides a user-friendly way to create, manage, and execute mirror configurations without requiring command-line expertise.
 
+**Current Version: v3.0**
+
 ## 🚀 Quick Start (Containerized - No Host Dependencies)
 
 The easiest way to run this application is using containers. This approach requires **no installation** of Node.js, oc, or oc-mirror on your host system.
@@ -104,6 +106,30 @@ The application now pre-fetches operator catalogs for all supported OCP versions
 - **Robust extraction**: Gracefully handles non-standard operator structures
 - **Complete coverage**: Processes all operators including edge cases like lightspeed-operator
 
+### Alternative: Quay.io Images (quay-run.sh)
+
+For production deployments using pre-built images from Quay.io:
+
+```bash
+# Make the script executable
+chmod +x quay-run.sh
+
+# Start the application from Quay.io
+./quay-run.sh
+
+# View logs
+./quay-run.sh --logs
+
+# Stop the application
+./quay-run.sh --stop
+
+# Show status
+./quay-run.sh --status
+
+# Restart the application
+./quay-run.sh --restart
+```
+
 ### Alternative: Podman Compose
 
 If you prefer using compose with Podman:
@@ -138,25 +164,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-## 🔧 Manual Setup (Advanced Users Only)
 
-If you prefer to run the application directly on your host system:
-
-### Prerequisites
-
-- Node.js 18+ and npm
-- OpenShift CLI (oc)
-- oc-mirror v2
-
-### Installation
-
-```bash
-# Install dependencies
-npm install
-
-# Start the application
-npm start
-```
 
 ## 📋 Features
 
@@ -202,6 +210,7 @@ oc-mirror-web-app/
 ├── Dockerfile            # Container definition
 ├── docker-compose.yml    # Multi-service setup
 ├── container-run.sh      # Easy container runner (Docker/Podman)
+├── quay-run.sh           # Quay.io image runner
 ├── podman-compose.sh     # Podman-specific compose runner
 └── README.md             # This file
 ```
@@ -287,28 +296,8 @@ mirror:
 ### Mirror Configuration
 ![Mirror Configuration](docs/screenshots/mirror-configuration.jpg)
 
-## 🛠️ Development
+## 📚 API Documentation
 
-### Prerequisites
-- Node.js 18+
-- npm or yarn
-
-### Setup
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm start
-
-# Build for production
-npm run build
-
-# Start production server
-npm run server
-```
-
-### API Documentation
 The application provides a comprehensive RESTful API at `http://localhost:3001/api/`. For detailed API documentation including all endpoints, request/response formats, and examples, see [API.md](API.md).
 
 **Key Endpoints:**
@@ -352,6 +341,12 @@ For issues and questions:
 - **OCP 4.17**: ✅ Supported
 - **OCP 4.18**: ✅ Supported
 - **OCP 4.19**: ✅ Supported
+
+### Deployment Options
+- **Local Build**: `./container-run.sh` - Build and run locally
+- **Quay.io Images**: `./quay-run.sh` - Use pre-built images from Quay.io
+- **Docker Compose**: `docker-compose up -d` - Multi-service deployment
+- **Podman Compose**: `./podman-compose.sh` - Podman-specific compose
 
 ### Container Runtime Requirements
 - **Docker**: 20.10+ ✅ Supported

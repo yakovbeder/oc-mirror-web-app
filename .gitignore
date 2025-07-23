@@ -93,4 +93,7 @@ temp/
 
 # Pre-fetched operator catalog data (large files, generated during build)
 catalog-data/*
-!catalog-data/.gitkeep 
+!catalog-data/.gitkeep
+
+# Build and deployment scripts
+build-for-quay.sh 
