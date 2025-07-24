@@ -222,6 +222,197 @@ const MirrorOperations = () => {
     setShowLogs(false);
   };
 
+  const downloadMirrorFiles = async (operationId) => {
+    try {
+      // Create progress modal
+      const progressModal = document.createElement('div');
+      progressModal.className = 'progress-modal';
+      progressModal.innerHTML = `
+        <div class="progress-overlay">
+          <div class="progress-content">
+            <h3>Creating Download Archive</h3>
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="download-progress-bar"></div>
+            </div>
+            <p id="download-progress-message">Initializing...</p>
+            <button id="cancel-download" class="btn btn-secondary">Cancel</button>
+          </div>
+        </div>
+      `;
+      
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        .progress-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 9999;
+        }
+        .progress-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .progress-content {
+          background: white;
+          padding: 2rem;
+          border-radius: 8px;
+          text-align: center;
+          min-width: 400px;
+        }
+        .progress-bar-container {
+          width: 100%;
+          height: 20px;
+          background: #f0f0f0;
+          border-radius: 10px;
+          margin: 1rem 0;
+          overflow: hidden;
+        }
+        .progress-bar {
+          height: 100%;
+          background: linear-gradient(90deg, #007bff, #0056b3);
+          width: 0%;
+          transition: width 0.3s ease;
+        }
+        #cancel-download {
+          margin-top: 1rem;
+        }
+      `;
+      document.head.appendChild(style);
+      document.body.appendChild(progressModal);
+      
+      // Get progress elements
+      const progressBar = document.getElementById('download-progress-bar');
+      const progressMessage = document.getElementById('download-progress-message');
+      const cancelButton = document.getElementById('cancel-download');
+      
+      // Set up polling for progress updates
+      let pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/operations/${operationId}/download-progress`);
+          
+          // If response is empty or not ok, the download has completed
+          if (!response.ok || response.status === 404) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            document.body.removeChild(progressModal);
+            document.head.removeChild(style);
+            
+            toast.success('Download completed successfully!', {
+              duration: 5000,
+            });
+            return;
+          }
+          
+          const data = await response.json();
+          
+          // If no progress data, the download has completed
+          if (!data || data.progress === 0 && data.message === 'Initializing download...') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            document.body.removeChild(progressModal);
+            document.head.removeChild(style);
+            
+            toast.success('Download completed successfully!', {
+              duration: 5000,
+            });
+            return;
+          }
+          
+          progressBar.style.width = `${data.progress}%`;
+          progressMessage.textContent = data.message;
+          
+          // Close modal when archive creation is finished (95%) or download starts (100%)
+          if (data.progress >= 95) {
+            clearInterval(pollInterval);
+            pollInterval = null; // Ensure it's cleared
+            document.body.removeChild(progressModal);
+            document.head.removeChild(style);
+            
+            toast.success('Archive ready! Download will start in your browser shortly.', {
+              duration: 5000,
+            });
+            return; // Stop polling immediately
+          }
+        } catch (error) {
+          console.error('Progress polling error:', error);
+          // If there's an error, assume download is complete and close modal
+          clearInterval(pollInterval);
+          pollInterval = null;
+          document.body.removeChild(progressModal);
+          document.head.removeChild(style);
+          
+          toast.success('Download completed successfully!', {
+            duration: 5000,
+          });
+        }
+      }, 200);
+      
+      // Start the download request immediately using fetch
+      fetch(`/api/operations/${operationId}/download`)
+        .then(response => {
+          if (response.ok) {
+            return response.blob();
+          }
+          throw new Error('Download failed');
+        })
+        .then(blob => {
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `mirror-files-${operationId}.tar.gz`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+          console.error('Download error:', error);
+          clearInterval(pollInterval);
+          document.body.removeChild(progressModal);
+          document.head.removeChild(style);
+          toast.error('Download failed');
+        });
+      
+      // Initial poll
+      const initialPoll = async () => {
+        try {
+          const response = await fetch(`/api/operations/${operationId}/download-progress`);
+          const data = await response.json();
+          
+          progressBar.style.width = `${data.progress}%`;
+          progressMessage.textContent = data.message;
+        } catch (error) {
+          console.error('Initial progress polling error:', error);
+        }
+      };
+      
+      // Initial poll
+      initialPoll();
+      
+      // Handle cancel button
+      cancelButton.addEventListener('click', () => {
+        clearInterval(pollInterval);
+        document.body.removeChild(progressModal);
+        document.head.removeChild(style);
+        toast.info('Download cancelled');
+      });
+      
+    } catch (error) {
+      console.error('Error downloading mirror files:', error);
+      toast.error('Failed to download mirror files');
+    }
+  };
+
   // Auto-scroll to bottom when logs update
   useEffect(() => {
     if (showLogs && logs) {
@@ -343,6 +534,15 @@ const MirrorOperations = () => {
                             onClick={() => stopOperation(op.id)}
                           >
                             ⏹️ Stop
+                          </button>
+                        )}
+                        {op.status === 'success' && (
+                          <button 
+                            className="btn btn-success"
+                            onClick={() => downloadMirrorFiles(op.id)}
+                            title="Download mirror files"
+                          >
+                            📥 Download
                           </button>
                         )}
                         <button 

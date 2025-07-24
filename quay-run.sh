@@ -88,6 +88,7 @@ stop_container() {
 create_data_directories() {
     print_status "Creating data directories..."
     mkdir -p "$DATA_DIR"/{configs,operations,logs,cache}
+    mkdir -p downloads
     print_success "Data directories created"
 }
 
@@ -118,12 +119,13 @@ run_container() {
     $CONTAINER_ENGINE run -d \
         --name $CONTAINER_NAME \
         -p $WEB_PORT:3001 \
-        -p $API_PORT:3001 \
         -v "$(pwd)/$DATA_DIR:/app/data" \
+        -v "$(pwd)/downloads:/app/downloads" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:ro" \
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \
+        -e DOWNLOADS_DIR=/app/downloads \
         -e OC_MIRROR_CACHE_DIR=/app/data/cache \
         -e LOG_LEVEL=info \
         --restart unless-stopped \
@@ -147,6 +149,7 @@ show_status() {
     print_status "  API: http://localhost:$API_PORT"
     
     print_status "Data Directory: $DATA_DIR"
+    print_status "Downloads Directory: $(pwd)/downloads"
     print_status "Architecture: $ARCH_NAME"
 }
 

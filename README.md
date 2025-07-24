@@ -2,7 +2,7 @@
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. This application provides a user-friendly way to create, manage, and execute mirror configurations without requiring command-line expertise.
 
-**Current Version: v3.0**
+**Current Version: v3.1**
 
 ## 🚀 Quick Start (Containerized - No Host Dependencies)
 
@@ -176,6 +176,7 @@ docker-compose down
 - **Settings Management**: Configure application preferences
 - **Multi-Architecture Support**: Automatic detection and support for AMD64 and ARM64
 - **Enhanced Catalog Processing**: Multi-format support for all operator catalog types
+- **Dynamic Download Progress**: Real-time progress bar for archive downloads with automatic modal management
 
 ### 🔧 Technical Features
 - **Real-time Updates**: Live status updates during operations
@@ -186,6 +187,7 @@ docker-compose down
 - **Dynamic Operator Discovery**: Real-time query of operator catalogs
 - **Smart Operator Selection**: Dropdown lists with dynamic operator packages and channels
 - **Multi-Format Catalog Support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
+- **Advanced Download System**: Polling-based progress tracking with robust error handling and automatic cleanup
 
 ### 🛡️ Security Features
 - **Input Validation**: Comprehensive validation of all inputs
@@ -214,6 +216,30 @@ oc-mirror-web-app/
 ├── podman-compose.sh     # Podman-specific compose runner
 └── README.md             # This file
 ```
+
+## 📥 Download System
+
+### Dynamic Progress Tracking
+The application features an advanced download system with real-time progress tracking:
+
+- **Real-time Progress Bar**: Visual progress indicator showing archive creation progress (0% → 95%)
+- **Smart Modal Management**: Progress modal automatically closes when archive creation completes
+- **Polling-based Updates**: Robust progress tracking using polling instead of SSE for better reliability
+- **Error Recovery**: Graceful handling of download failures and network issues
+- **Success Notifications**: Clear user feedback when downloads are ready
+
+### Download Process
+1. **Archive Creation**: System creates a compressed archive of operation files
+2. **Progress Tracking**: Real-time progress updates via polling
+3. **Modal Closure**: Progress modal closes at 95% completion
+4. **Browser Download**: Archive automatically starts downloading in the browser
+5. **Success Notification**: User receives confirmation of successful download
+
+### Technical Implementation
+- **Backend**: Uses `child_process.spawn` with `tar` for efficient archive creation
+- **Frontend**: Polling-based progress updates with comprehensive error handling
+- **Progress Storage**: Global progress tracking with automatic cleanup
+- **Modal Management**: Multiple exit conditions ensure proper modal closure
 
 ## 🔄 oc-mirror v2 Support
 
@@ -276,6 +302,9 @@ mirror:
 - Real-time progress monitoring
 - Log streaming
 - Operation cancellation
+- **Dynamic Download Progress**: Real-time progress bar for archive creation and download
+- **Smart Modal Management**: Automatic modal closure with success notifications
+- **Robust Error Handling**: Graceful handling of download failures and edge cases
 
 ### History
 - Comprehensive operation history
@@ -307,6 +336,8 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 - `POST /api/config/save` - Create/save configuration
 - `GET /api/operations` - List operations
 - `POST /api/operations/start` - Start operation
+- `GET /api/operations/:id/download` - Download operation archive
+- `GET /api/operations/:id/download-progress` - Get download progress (polling endpoint)
 - `GET /api/catalogs` - Get available operator catalogs
 - `GET /api/operators` - Get available operators (dynamic discovery)
 - `GET /api/operator-channels/:operator` - Get channels for specific operator (dynamic)

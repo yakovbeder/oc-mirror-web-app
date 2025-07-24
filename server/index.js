@@ -6,6 +6,7 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const YAML = require('yaml');
 const { v4: uuidv4 } = require('uuid');
+const tar = require('tar');
 
 const execAsync = promisify(exec);
 
@@ -38,10 +39,11 @@ const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
+const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || './downloads';
 
 // Ensure directories exist
 async function ensureDirectories() {
-  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR];
+  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR, DOWNLOADS_DIR];
   for (const dir of dirs) {
     try {
       await fs.mkdir(dir, { recursive: true });
@@ -1801,6 +1803,180 @@ app.get('/api/system/info', async (req, res) => {
     res.json(systemInfo);
   } catch (error) {
     res.status(500).json({ error: 'Failed to get system info' });
+  }
+});
+
+// Helper function to count files in directory
+async function countFiles(dirPath) {
+  let count = 0;
+  const files = await fs.readdir(dirPath, { withFileTypes: true });
+  
+  for (const file of files) {
+    const fullPath = path.join(dirPath, file.name);
+    if (file.isDirectory()) {
+      count += await countFiles(fullPath);
+    } else {
+      count++;
+    }
+  }
+  return count;
+}
+
+// Download progress endpoint (Simple JSON response)
+app.get('/api/operations/:id/download-progress', (req, res) => {
+  const { id } = req.params;
+  
+  // Initialize progress tracking if not exists
+  if (!global.downloadProgress) {
+    global.downloadProgress = new Map();
+  }
+  
+  // Get current progress for this download
+  const progress = global.downloadProgress.get(id) || { progress: 0, message: 'Initializing download...' };
+  
+  res.json(progress);
+});
+
+// Download mirror files endpoint
+app.get('/api/operations/:id/download', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const operation = await getOperation(id);
+    
+    if (!operation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+    
+    if (operation.status !== 'success') {
+      return res.status(400).json({ error: 'Operation must be successful to download files' });
+    }
+    
+    const mirrorDir = '/app/mirror';
+    
+    // Check if mirror directory exists
+    try {
+      await fs.access(mirrorDir);
+    } catch (error) {
+      return res.status(404).json({ error: 'Mirror files not found. Operation may not have completed successfully.' });
+    }
+    
+    // Send progress updates with debugging
+    const sendProgress = (progress, message) => {
+      console.log(`[PROGRESS] ${progress}%: ${message}`);
+      // Store progress data for polling
+      if (!global.downloadProgress) {
+        global.downloadProgress = new Map();
+      }
+      global.downloadProgress.set(id, { progress, message });
+    };
+    
+    sendProgress(10, 'Scanning mirror directory...');
+    
+    // Get directory size for progress calculation
+    const getDirectorySize = async (dirPath) => {
+      let totalSize = 0;
+      const files = await fs.readdir(dirPath, { withFileTypes: true });
+      
+      for (const file of files) {
+        const fullPath = path.join(dirPath, file.name);
+        if (file.isDirectory()) {
+          totalSize += await getDirectorySize(fullPath);
+        } else {
+          const stats = await fs.stat(fullPath);
+          totalSize += stats.size;
+        }
+      }
+      return totalSize;
+    };
+    
+    const totalSize = await getDirectorySize(mirrorDir);
+    sendProgress(20, `Found ${totalSize} bytes to archive...`);
+    
+    // Create a temporary tar.gz file
+    const tarFileName = `mirror-files-${id}-${Date.now()}.tar.gz`;
+    const tarFilePath = path.join(DOWNLOADS_DIR, tarFileName);
+    
+    sendProgress(30, 'Creating tar.gz archive...');
+    
+    // Set response headers for file download
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="${tarFileName}"`);
+    
+    // Create archive with simple progress tracking
+    sendProgress(40, 'Creating archive...');
+    
+    // Use a simple approach with manual progress updates
+    const { spawn } = require('child_process');
+    const tarProcess = spawn('tar', ['-czf', tarFilePath, '-C', '/app', 'mirror'], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    
+    let progressCounter = 40;
+    const progressInterval = setInterval(() => {
+      if (progressCounter < 85) {
+        progressCounter += 5;
+        sendProgress(progressCounter, `Creating archive... ${progressCounter}%`);
+      }
+    }, 200);
+    
+    // Handle tar process completion
+    tarProcess.on('close', async (code) => {
+      clearInterval(progressInterval);
+      
+      if (code === 0) {
+        sendProgress(90, 'Archive created successfully');
+        try {
+          sendProgress(95, 'Archive creation completed. Initializing download...');
+          
+          // Get file stats for Content-Length
+          const stats = await fs.stat(tarFilePath);
+          res.setHeader('Content-Length', stats.size);
+          
+          sendProgress(100, 'Download starting in browser...');
+          
+          // Clean up progress data after sending 100%
+          setTimeout(() => {
+            if (global.downloadProgress) {
+              global.downloadProgress.delete(id);
+            }
+          }, 1000); // Clean up after 1 second
+          
+          // Stream the tar.gz file to response
+          const fileStream = require('fs').createReadStream(tarFilePath);
+          fileStream.pipe(res);
+          
+          // Clean up the temporary tar.gz file after streaming
+          fileStream.on('end', async () => {
+            try {
+              await fs.unlink(tarFilePath);
+              // Clean up progress data
+              if (global.downloadProgress) {
+                global.downloadProgress.delete(id);
+              }
+            } catch (cleanupError) {
+              console.error('Error cleaning up temporary tar.gz file:', cleanupError);
+            }
+          });
+        } catch (error) {
+          console.error('Error streaming tar.gz file:', error);
+          res.status(500).json({ error: 'Failed to download files' });
+        }
+      } else {
+        console.error('Tar process failed with code:', code);
+        res.status(500).json({ error: 'Failed to create download archive' });
+      }
+    });
+    
+    // Handle tar process errors
+    tarProcess.on('error', (err) => {
+      clearInterval(progressInterval);
+      console.error('Error creating archive:', err);
+      res.status(500).json({ error: 'Failed to create download archive' });
+    });
+    
+  } catch (error) {
+    console.error('Error downloading mirror files:', error);
+    res.status(500).json({ error: 'Failed to download mirror files' });
   }
 });
 

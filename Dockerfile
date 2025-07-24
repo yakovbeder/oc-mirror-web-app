@@ -88,8 +88,8 @@ COPY server ./server
 # Copy pre-fetched catalog data (if available)
 COPY catalog-data ./catalog-data
 
-# Create data directory
-RUN mkdir -p /app/data
+# Create data and downloads directories
+RUN mkdir -p /app/data /app/downloads
 
 # Create non-root user
 RUN groupadd -r nodejs -g 1001 && \

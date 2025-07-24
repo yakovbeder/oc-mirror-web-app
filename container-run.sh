@@ -83,14 +83,15 @@ create_directories() {
     mkdir -p data/operations
     mkdir -p data/logs
     mkdir -p data/cache
+    mkdir -p downloads
     
     # Fix permissions for nodejs user (UID 1001)
     print_status "Setting proper permissions for container user..."
-    chmod -R 755 data/
-    chown -R 1001:1001 data/ 2>/dev/null || {
+    chmod -R 755 data/ downloads/
+    chown -R 1001:1001 data/ downloads/ 2>/dev/null || {
         print_warning "Could not change ownership (may need sudo). Trying alternative approach..."
         # Alternative: make directories writable by all
-        chmod -R 777 data/
+        chmod -R 777 data/ downloads/
     }
     
     print_success "Data directories created with proper permissions"
@@ -165,10 +166,12 @@ run_container() {
         --name oc-mirror-web-app \
         -p 3000:3001 \
         -v "$(pwd)/data:/app/data" \
+        -v "$(pwd)/downloads:/app/downloads" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:ro" \
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \
+        -e DOWNLOADS_DIR=/app/downloads \
         -e OC_MIRROR_CACHE_DIR=/app/data/cache \
         -e LOG_LEVEL=info \
         --restart unless-stopped \
@@ -190,6 +193,7 @@ show_status() {
     echo "🔧 API Server: http://localhost:3001"
     echo ""
     echo "📁 Data Directory: $(pwd)/data"
+    echo "📥 Downloads Directory: $(pwd)/downloads"
     echo "📋 Container Name: oc-mirror-web-app"
     echo "🔧 Container Engine: $CONTAINER_ENGINE"
     echo "🏗️  System Architecture: $ARCH_NAME"
@@ -213,11 +217,23 @@ fix_permissions() {
         # Try to change ownership to nodejs user (UID 1001)
         if chown -R 1001:1001 data/ 2>/dev/null; then
             chmod -R 755 data/
-            print_success "Permissions fixed successfully"
+            print_success "Data directory permissions fixed successfully"
         else
             print_warning "Could not change ownership. Making directories world-writable..."
             chmod -R 777 data/
-            print_success "Made directories world-writable"
+            print_success "Made data directories world-writable"
+        fi
+    fi
+    
+    if [ -d "downloads" ]; then
+        # Try to change ownership to nodejs user (UID 1001)
+        if chown -R 1001:1001 downloads/ 2>/dev/null; then
+            chmod -R 755 downloads/
+            print_success "Downloads directory permissions fixed successfully"
+        else
+            print_warning "Could not change ownership. Making directories world-writable..."
+            chmod -R 777 downloads/
+            print_success "Made downloads directories world-writable"
         fi
     fi
 }

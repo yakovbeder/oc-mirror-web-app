@@ -1,6 +1,6 @@
 {
   "name": "oc-mirror-web-app",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Web application for OpenShift Container Platform mirroring operations using oc-mirror v2",
   "main": "index.js",
   "scripts": {
@@ -32,7 +32,9 @@
     "multer": "^2.0.0-rc.3",
     "node-cron": "^3.0.3",
     "uuid": "^11.0.1",
-    "compression": "^1.7.4"
+    "compression": "^1.7.4",
+    "tar": "^6.2.0",
+    "archiver": "^6.0.1"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
