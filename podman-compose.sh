@@ -68,8 +68,20 @@ create_directories() {
     mkdir -p data/operations
     mkdir -p data/logs
     mkdir -p data/cache
+    mkdir -p downloads
+    mkdir -p pull-secret
     
     print_success "Data directories created"
+    
+    # Fix permissions for container user (UID 1001)
+    print_status "Setting proper permissions for container user..."
+    chmod -R 755 data/ downloads/ 2>/dev/null || true
+    chown -R 1001:1001 data/ downloads/ 2>/dev/null || {
+        print_warning "Could not change ownership (may need sudo). Trying alternative approach..."
+        chmod -R 777 data/ downloads/
+    }
+    
+    print_success "Permissions set successfully"
 }
 
 # Start services
@@ -106,11 +118,11 @@ show_status() {
     echo ""
     
     echo "📊 Container Status:"
-    podman ps --filter "name=oc-mirror" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    podman ps --filter "name=oc-mirror-web-app" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     
     echo "🌐 Web Interface: http://localhost:3000"
-    echo "🔧 API Server: http://localhost:3001"
+    echo "🔧 API Server: http://localhost:3000/api"
     echo ""
     
     echo "📝 Useful Commands:"

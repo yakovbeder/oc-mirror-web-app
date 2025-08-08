@@ -5,16 +5,19 @@ services:
     build: .
     container_name: oc-mirror-web-app
     ports:
-      - "3000:3001"
+      - "3000:3001"  # Map host 3000 to container 3001 (both web UI and API)
     volumes:
       # Mount data directory for persistence
       - ./data:/app/data
-      # Mount pull secret if available
-      - ./pull-secret.json:/app/pull-secret.json:ro
+      # Mount downloads directory
+      - ./downloads:/app/downloads
+      # Mount pull secret file if available
+      - ./pull-secret/pull-secret.json:/app/pull-secret.json:ro
     environment:
       - NODE_ENV=production
       - PORT=3001
       - STORAGE_DIR=/app/data
+      - DOWNLOADS_DIR=/app/downloads
       - OC_MIRROR_CACHE_DIR=/app/data/cache
       - LOG_LEVEL=info
     restart: unless-stopped
