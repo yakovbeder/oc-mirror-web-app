@@ -23,15 +23,25 @@ cd oc-mirror-web-app
 
 ### 2. Run with Container Script (Recommended)
 
+> **🚨 IMPORTANT: First Run Requirement** 🚨
+> 
+> **For your first run, you MUST use the `--fetch-catalogs` flag to download operator catalogs:**
+> 
+> ```bash
+> # Make the script executable
+> chmod +x container-run.sh
+> 
+> # ⭐ FIRST RUN: Build and run with catalog fetching (REQUIRED)
+> ./container-run.sh --fetch-catalogs
+> ```
+> 
+> **Why is this important?**
+> - The `--fetch-catalogs` flag downloads real operator catalog data for all OCP versions (4.15-4.19)
+> - **Without this flag, the application will not work properly** - it requires the catalog data to function
+> - This ensures you have access to the complete list of operators and their channels
+> - Subsequent runs can use `./container-run.sh` (without the flag) for faster startup
+
 The script automatically detects whether you have Docker or Podman and uses the appropriate one.
-
-```bash
-# Make the script executable
-chmod +x container-run.sh
-
-# Build and run the application
-./container-run.sh
-```
 
 The script will:
 - ✅ Detect your container runtime (Docker or Podman)

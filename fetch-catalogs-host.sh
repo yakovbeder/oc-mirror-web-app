@@ -261,6 +261,14 @@ process_catalog_data() {
 main() {
     print_status "Starting catalog fetch process..."
     
+    # Check if pull-secret.json exists
+    if [ ! -f "pull-secret/pull-secret.json" ]; then
+        print_error "pull-secret.json not found in pull-secret/ directory."
+        print_error "Please ensure you have a valid pull-secret.json file to authenticate with Red Hat Registry."
+        print_error "You can download it from: https://console.redhat.com/openshift/install/pull-secret"
+        exit 1
+    fi
+    
     # Check if podman is available
     if ! command -v podman >/dev/null 2>&1; then
         print_error "podman is not available. Cannot fetch catalogs."
