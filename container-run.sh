@@ -165,9 +165,9 @@ run_container() {
     $CONTAINER_ENGINE run -d \
         --name oc-mirror-web-app \
         -p 3000:3001 \
-        -v "$(pwd)/data:/app/data" \
+        -v "$(pwd)/data:/app/data:z" \
         -v "$(pwd)/downloads:/app/downloads" \
-        -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:ro" \
+        -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \
