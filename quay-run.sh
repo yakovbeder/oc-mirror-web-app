@@ -119,9 +119,9 @@ run_container() {
     $CONTAINER_ENGINE run -d \
         --name $CONTAINER_NAME \
         -p $WEB_PORT:3001 \
-        -v "$(pwd)/$DATA_DIR:/app/data" \
-        -v "$(pwd)/downloads:/app/downloads" \
-        -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:ro" \
+        -v "$(pwd)/$DATA_DIR:/app/data:z" \
+        -v "$(pwd)/downloads:/app/downloads:z" \
+        -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \

@@ -75,7 +75,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies and fix non-breaking vulnerabilities
-RUN npm install --only=production && npm audit fix || true && npm cache clean --force
+RUN npm install --only=production --verbose && npm audit fix || true && npm cache clean --force
 
 
 

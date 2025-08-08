@@ -166,7 +166,7 @@ run_container() {
         --name oc-mirror-web-app \
         -p 3000:3001 \
         -v "$(pwd)/data:/app/data:z" \
-        -v "$(pwd)/downloads:/app/downloads" \
+        -v "$(pwd)/downloads:/app/downloads:z" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
         -e NODE_ENV=production \
         -e PORT=3001 \
@@ -306,6 +306,7 @@ case "${1:-}" in
         ;;
     --run-only)
         check_container_runtime
+        detect_system_architecture
         run_container
         show_status
         exit 0
