@@ -2,7 +2,7 @@
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. This application provides a user-friendly way to create, manage, and execute mirror configurations without requiring command-line expertise.
 
-**Current Version: v3.1**
+**Current Version: v3.1.1**
 
 ## 🚀 Quick Start (Containerized - No Host Dependencies)
 
