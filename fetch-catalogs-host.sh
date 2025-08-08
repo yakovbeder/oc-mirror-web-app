@@ -208,8 +208,16 @@ process_catalog_data() {
                 default_channel=$(grep "defaultChannel:" "$yaml_file" | head -1 | sed 's/.*defaultChannel: //' 2>/dev/null)
                 # For YAML files, we'll set channels to empty for now (complex structure)
                 channels=""
+            elif [ -f "$package_json" ] && [ -d "${operator_dir}/channels" ]; then
+                # Handle package.json + channels/ directory format (like volsync-product)
+                operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
+                default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
+                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
+                    # Extract all channel names from channel files in channels/ directory
+                    channels=$(find "${operator_dir}/channels" -name "channel-*.json" -exec basename {} \; | sed 's/channel-\(.*\)\.json/\1/' | sort -u | tr '\n' ' ' | sed 's/ $//')
+                fi
             elif [ -f "$package_json" ]; then
-                # Handle package.json only (like volsync-product)
+                # Handle package.json only (fallback)
                 operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
                 default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
                 # For package.json only, we'll set a placeholder for channels
