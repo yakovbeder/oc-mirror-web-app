@@ -142,7 +142,7 @@ process_catalog_data() {
             local index_json="${operator_dir}/index.json"
             local index_yaml="${operator_dir}/index.yaml"
             local package_json="${operator_dir}/package.json"
-            local channel_json="${operator_dir}/channel.json"
+            local channel_json="${operator_dir}/channels.json"
             local catalog_yaml="${operator_dir}/catalog.yaml"
             local catalog_yml="${operator_dir}/catalog.yml"
             
@@ -189,12 +189,12 @@ process_catalog_data() {
                 # For index.yaml files, we'll set channels to empty for now (complex structure)
                 channels=""
             elif [ -f "$package_json" ] && [ -f "$channel_json" ]; then
-                # Handle package.json + channel.json format
+                # Handle package.json + channels.json format
                 operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
                 default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channels from channel.json entries
-                    channels=$(jq -r '.entries[].name // empty' "$channel_json" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    # Extract all channel names from channels.json (multiple JSON objects)
+                    channels=$(jq -r '.name // empty' "$channel_json" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
                 fi
             elif [ -f "$catalog_yaml" ] || [ -f "$catalog_yml" ]; then
                 # Handle catalog.yaml or catalog.yml files (YAML format)
