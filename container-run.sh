@@ -271,7 +271,7 @@ main() {
     if [ "$FETCH_CATALOGS" = "true" ]; then
         fetch_catalogs
     else
-        print_status "Skipping catalog fetch (using fallback data)"
+        print_status "Skipping catalog fetch (using pre-cached catalogs)"
     fi
     
     build_image
