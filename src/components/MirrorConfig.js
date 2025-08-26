@@ -148,7 +148,8 @@ const MirrorConfig = () => {
       name: `stable-${ocpVersions[0]}`,
       minVersion: '',
       maxVersion: '',
-      type: 'ocp'
+      type: 'ocp',
+      shortestPath: false
     };
     setConfig(prev => ({
       ...prev,
@@ -583,6 +584,20 @@ const MirrorConfig = () => {
                     onChange={(e) => updatePlatformChannel(index, 'maxVersion', e.target.value)}
                     placeholder="e.g., 4.16.10"
                   />
+                </div>
+                
+                <div className="form-group">
+                  <label>
+                    <input 
+                      type="checkbox" 
+                      checked={channel.shortestPath || false}
+                      onChange={(e) => updatePlatformChannel(index, 'shortestPath', e.target.checked)}
+                    />
+                    {' '}Shortest Path
+                  </label>
+                  <small className="form-text text-muted">
+                    Enable shortest path calculation for this channel. This will find the most direct upgrade path between versions.
+                  </small>
                 </div>
               </div>
             </div>

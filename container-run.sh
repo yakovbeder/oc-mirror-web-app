@@ -77,6 +77,14 @@ check_container_runtime() {
 
 # Create necessary directories
 create_directories() {
+    print_status "Checking data directories..."
+    
+    # Check if directories already exist and have proper permissions
+    if [ -d "data" ] && [ -d "downloads" ] && [ -w "data" ] && [ -w "downloads" ]; then
+        print_success "Data directories already exist with proper permissions"
+        return 0
+    fi
+    
     print_status "Creating data directories..."
     
     mkdir -p data/configs
@@ -211,7 +219,15 @@ show_status() {
 
 # Fix permissions for existing installations
 fix_permissions() {
-    print_status "Checking and fixing data directory permissions..."
+    print_status "Checking data directory permissions..."
+    
+    # Check if permissions are already correct
+    if [ -d "data" ] && [ -w "data" ] && [ -d "downloads" ] && [ -w "downloads" ]; then
+        print_success "Data directories already have proper permissions"
+        return 0
+    fi
+    
+    print_status "Fixing data directory permissions..."
     
     if [ -d "data" ]; then
         # Try to change ownership to nodejs user (UID 1001)
