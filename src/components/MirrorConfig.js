@@ -420,7 +420,29 @@ const MirrorConfig = () => {
     if (config.mirror.platform.channels && config.mirror.platform.channels.length > 0) {
       cleanConfig.mirror.platform = {
         graph: config.mirror.platform.graph,
-        channels: config.mirror.platform.channels
+        channels: config.mirror.platform.channels.map(channel => {
+          const cleanChannel = {
+            name: channel.name,
+            type: channel.type
+          };
+          
+          // Only add minVersion if it's not empty
+          if (channel.minVersion && channel.minVersion.trim() !== '') {
+            cleanChannel.minVersion = channel.minVersion;
+          }
+          
+          // Only add maxVersion if it's not empty
+          if (channel.maxVersion && channel.maxVersion.trim() !== '') {
+            cleanChannel.maxVersion = channel.maxVersion;
+          }
+          
+          // Only add shortestPath if it's true (don't show false)
+          if (channel.shortestPath === true) {
+            cleanChannel.shortestPath = true;
+          }
+          
+          return cleanChannel;
+        })
       };
     }
 
