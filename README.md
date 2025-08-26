@@ -235,6 +235,8 @@ docker-compose logs -f
 docker-compose down
 ```
 
+[⬆️ Back to Top](#-table-of-contents)
+
 
 
 ## 📋 Features
@@ -265,6 +267,8 @@ docker-compose down
 - **File Sanitization**: Secure file handling and processing
 - **Error Isolation**: Operations are isolated to prevent system impact
 
+[⬆️ Back to Top](#-table-of-contents)
+
 ## 📁 Application Structure
 
 ```
@@ -287,6 +291,8 @@ oc-mirror-web-app/
 ├── podman-compose.sh     # Podman-specific compose runner
 └── README.md             # This file
 ```
+
+[⬆️ Back to Top](#-table-of-contents)
 
 ## 📥 Download System
 
@@ -311,6 +317,8 @@ The application features an advanced download system with real-time progress tra
 - **Frontend**: Polling-based progress updates with comprehensive error handling
 - **Progress Storage**: Global progress tracking with automatic cleanup
 - **Modal Management**: Multiple exit conditions ensure proper modal closure
+
+[⬆️ Back to Top](#-table-of-contents)
 
 ## 🔄 oc-mirror v2 Support
 
@@ -354,6 +362,8 @@ mirror:
 - ✅ **Enhanced Validation**: Better validation and error handling
 - ✅ **Simplified Format**: Clean and readable configuration structure
 
+[⬆️ Back to Top](#-table-of-contents)
+
 ## 🎨 User Interface
 
 ### Dashboard
@@ -388,6 +398,8 @@ mirror:
 - System preferences
 - Maintenance tools
 
+[⬆️ Back to Top](#-table-of-contents)
+
 ## 📸 Screenshots
 
 ### Dashboard
@@ -398,6 +410,8 @@ mirror:
 
 ### Mirror Operations
 ![Mirror Operations](docs/screenshots/mirror-operations.png)
+
+[⬆️ Back to Top](#-table-of-contents)
 
 ## 📚 API Documentation
 
@@ -416,6 +430,8 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 - `GET /api/operators` - Get available operators (dynamic discovery)
 - `GET /api/operator-channels/:operator` - Get channels for specific operator (dynamic)
 
+[⬆️ Back to Top](#-table-of-contents)
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -424,9 +440,13 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 4. Test thoroughly
 5. Submit a pull request
 
+[⬆️ Back to Top](#-table-of-contents)
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+[⬆️ Back to Top](#-table-of-contents)
 
 ## 🆘 Support
 
@@ -434,6 +454,8 @@ For issues and questions:
 1. Check the troubleshooting section in QUICKSTART.md
 2. Review the application logs
 3. Open an issue on GitHub
+
+[⬆️ Back to Top](#-table-of-contents)
 
 ## 🔧 Version Compatibility
 
@@ -460,4 +482,6 @@ For issues and questions:
 
 ### Architecture Support
 - **AMD64 (x86_64)**: ✅ Fully supported
-- **ARM64 (aarch64)**: ✅ Fully supported 
+- **ARM64 (aarch64)**: ✅ Fully supported
+
+[⬆️ Back to Top](#-table-of-contents) 
