@@ -4,6 +4,67 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 
 **Current Version: v3.1.1**
 
+## 📋 Table of Contents
+
+### 🚀 Getting Started
+- [Quick Start (Containerized)](#-quick-start-containerized---no-host-dependencies)
+  - [Prerequisites](#prerequisites)
+  - [Clone and Navigate](#1-clone-and-navigate)
+  - [Run with Container Script](#2-run-with-container-script-recommended)
+  - [Access the Application](#3-access-the-application)
+  - [Container Management](#container-management)
+  - [Operator Catalog Fetching](#operator-catalog-fetching)
+
+### 🔧 Alternative Deployment Options
+- [Quay.io Images (quay-run.sh)](#alternative-quayio-images-quay-runsh)
+- [Podman Compose](#alternative-podman-compose)
+- [Docker Compose](#alternative-docker-compose)
+
+### 📋 Features & Capabilities
+- [Features](#-features)
+  - [Core Functionality](#-core-functionality)
+  - [Technical Features](#-technical-features)
+  - [Security Features](#️-security-features)
+- [Application Structure](#-application-structure)
+- [Download System](#-download-system)
+  - [Dynamic Progress Tracking](#dynamic-progress-tracking)
+  - [Download Process](#download-process)
+  - [Technical Implementation](#technical-implementation)
+
+### 🔄 Technical Details
+- [oc-mirror v2 Support](#-oc-mirror-v2-support)
+  - [Supported Features](#-supported-features)
+  - [Configuration Format](#-configuration-format)
+  - [Configuration Features](#-configuration-features)
+
+### 🎨 User Experience
+- [User Interface](#-user-interface)
+  - [Dashboard](#dashboard)
+  - [Mirror Configuration](#mirror-configuration)
+  - [Mirror Operations](#mirror-operations)
+  - [History](#history)
+  - [Settings](#settings)
+- [Screenshots](#-screenshots)
+  - [Dashboard](#dashboard-1)
+  - [Mirror Configuration](#mirror-configuration-1)
+  - [Mirror Operations](#mirror-operations-1)
+
+### 📚 Documentation & Support
+- [API Documentation](#-api-documentation)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Support](#-support)
+
+### 🔧 Compatibility & Requirements
+- [Version Compatibility](#-version-compatibility)
+  - [Supported oc-mirror Versions](#supported-oc-mirror-versions)
+  - [Supported OpenShift Versions](#supported-openshift-versions)
+  - [Deployment Options](#deployment-options)
+  - [Container Runtime Requirements](#container-runtime-requirements)
+  - [Architecture Support](#architecture-support)
+
+---
+
 ## 🚀 Quick Start (Containerized - No Host Dependencies)
 
 The easiest way to run this application is using containers. This approach requires **no installation** of Node.js, oc, or oc-mirror on your host system.
