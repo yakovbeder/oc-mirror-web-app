@@ -330,10 +330,13 @@ mirror:
 ## 📸 Screenshots
 
 ### Dashboard
-![Dashboard](docs/screenshots/dashboard.jpg)
+![Dashboard](docs/screenshots/dashboard.png)
 
 ### Mirror Configuration
 ![Mirror Configuration](docs/screenshots/mirror-configuration.jpg)
+
+### Mirror Operations
+![Mirror Operations](docs/screenshots/mirror-operations.png)
 
 ## 📚 API Documentation
 
