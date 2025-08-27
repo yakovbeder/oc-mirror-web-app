@@ -221,6 +221,24 @@ sudo ./container-run.sh
 podman system connection list
 ```
 
+### Configuration Saving Issues
+
+**Problem**: Popup shows "Failed to save configuration"
+
+**Solution**: This is typically a directory permission issue. The container needs write access to the data directories.
+
+```bash
+# Fix directory permissions (recommended)
+sudo chmod -R 755 data/
+
+# Alternative: Make directories world-writable (less secure)
+sudo chmod -R 777 data/
+```
+
+**Why this happens**: The container runs as the `nodejs` user (UID 1001), but the data directories might be owned by `root` or have insufficient permissions.
+
+**Verification**: After fixing permissions, try saving a configuration again. The popup should show "Configuration saved successfully".
+
 ### Podman-Specific Issues
 ```bash
 # Check Podman status

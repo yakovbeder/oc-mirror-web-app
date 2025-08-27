@@ -51,6 +51,7 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 
 ### 📚 Documentation & Support
 - [API Documentation](#-api-documentation)
+- [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 - [License](#-license)
 - [Support](#-support)
@@ -446,6 +447,32 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+[⬆️ Back to Top](#-table-of-contents)
+
+## 🔧 Troubleshooting
+
+### Configuration Saving Issues
+
+**Problem**: Popup shows "Failed to save configuration"
+
+**Solution**: This is typically a directory permission issue. The container needs write access to the data directories.
+
+```bash
+# Fix directory permissions (recommended)
+sudo chmod -R 755 data/
+
+# Alternative: Make directories world-writable (less secure)
+sudo chmod -R 777 data/
+```
+
+**Why this happens**: The container runs as the `nodejs` user (UID 1001), but the data directories might be owned by `root` or have insufficient permissions.
+
+**Verification**: After fixing permissions, try saving a configuration again. The popup should show "Configuration saved successfully".
+
+### Other Common Issues
+
+For additional troubleshooting steps, see the [Troubleshooting section in QUICKSTART.md](QUICKSTART.md#-troubleshooting).
 
 [⬆️ Back to Top](#-table-of-contents)
 
