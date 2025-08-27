@@ -954,7 +954,7 @@ const MirrorConfig = () => {
                               <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap' }}>Min:</label>
                               <select
                                 className="form-control form-control-sm"
-                                style={{ width: '100px' }}
+                                style={{ width: '120px' }}
                                 value={channel.minVersion || ''}
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'minVersion', e.target.value)}
                               >
@@ -971,7 +971,7 @@ const MirrorConfig = () => {
                               <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap' }}>Max:</label>
                               <select
                                 className="form-control form-control-sm"
-                                style={{ width: '100px' }}
+                                style={{ width: '120px' }}
                                 value={channel.maxVersion || ''}
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'maxVersion', e.target.value)}
                               >
@@ -995,9 +995,7 @@ const MirrorConfig = () => {
                       ))}
 
                     </div>
-                    <small className="form-text text-muted">
-                      Click on channel tags above to add them
-                    </small>
+
                   </div>
                 </div>
               ))}
