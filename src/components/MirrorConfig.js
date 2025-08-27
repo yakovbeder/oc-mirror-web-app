@@ -929,10 +929,10 @@ const MirrorConfig = () => {
                     
                     <div className="channels-container">
                       {pkg.channels && pkg.channels.map((channel, channelIndex) => (
-                        <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem', alignItems: 'center', gap: '0.5rem' }}>
+                        <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem', alignItems: 'flex-end', gap: '0.5rem' }}>
                           <select
                             className="form-control"
-                            style={{ minWidth: '180px', maxWidth: '220px' }}
+                             style={{ minWidth: '180px', maxWidth: '220px' }}
                             value={channel.name}
                             onChange={(e) => updateOperatorPackageChannel(opIndex, pkgIndex, channelIndex, e.target.value)}
                           >
@@ -954,7 +954,7 @@ const MirrorConfig = () => {
                               <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap', fontWeight: '500' }}>Min Version:</label>
                               <select
                                 className="form-control form-control-sm"
-                                style={{ width: '110px' }}
+                                style={{ width: '160px' }}
                                 value={channel.minVersion || ''}
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'minVersion', e.target.value)}
                               >
@@ -971,7 +971,7 @@ const MirrorConfig = () => {
                               <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap', fontWeight: '500' }}>Max Version:</label>
                               <select
                                 className="form-control form-control-sm"
-                                style={{ width: '110px' }}
+                                style={{ width: '160px' }}
                                 value={channel.maxVersion || ''}
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'maxVersion', e.target.value)}
                               >
@@ -987,6 +987,7 @@ const MirrorConfig = () => {
                           
                           <button
                             className="btn btn-sm btn-danger"
+                            style={{ alignSelf: 'flex-end' }}
                             onClick={() => removeOperatorPackageChannel(opIndex, pkgIndex, channelIndex)}
                           >
                             Remove
