@@ -343,6 +343,7 @@ mirror:
     - name: stable-4.18
       minVersion: "4.18.0"
       maxVersion: "4.18.10"
+      shortestPath: true
     graph: true
   operators:
   - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.18

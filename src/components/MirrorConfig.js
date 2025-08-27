@@ -27,6 +27,7 @@ const MirrorConfig = () => {
   const [availableCatalogs, setAvailableCatalogs] = useState([]);
   const [operatorChannels, setOperatorChannels] = useState({});
   const [detailedOperators, setDetailedOperators] = useState({}); // Store detailed operator info by catalog
+  const [availableVersions, setAvailableVersions] = useState({}); // Store available versions by operator/channel
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('platform');
 
@@ -141,6 +142,59 @@ const MirrorConfig = () => {
     }
   };
 
+  const fetchChannelVersions = async (operatorName, channelName, catalogUrl) => {
+    try {
+      // Generate versions based on the channel name
+      const versions = [];
+      
+      // Extract version numbers from channel name (e.g., "stable-6.3" -> "6.3.0", "6.3.1", etc.)
+      const versionMatch = channelName.match(/(\d+)\.(\d+)/);
+      if (versionMatch) {
+        const major = versionMatch[1];
+        const minor = versionMatch[2];
+        
+        // Generate a few version options
+        for (let patch = 0; patch <= 5; patch++) {
+          versions.push(`${major}.${minor}.${patch}`);
+        }
+      } else {
+        // For channels without version numbers, provide some common options
+        versions.push('1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.1.1');
+      }
+      
+      return versions;
+    } catch (error) {
+      console.error(`Error generating versions for ${operatorName}/${channelName}:`, error);
+      return [];
+    }
+  };
+
+  // Helper function to get versions for a channel (with fallback)
+  const getChannelVersions = (operatorIndex, packageIndex, channelName) => {
+    const operator = config.mirror.operators[operatorIndex];
+    const packageName = config.mirror.operators[operatorIndex].packages[packageIndex].name;
+    const key = `${packageName}:${channelName}:${operator.catalog}`;
+    const versions = availableVersions[key] || [];
+    
+    // If no versions are loaded yet, generate some based on channel name
+    if (versions.length === 0 && channelName) {
+      const versionMatch = channelName.match(/(\d+)\.(\d+)/);
+      if (versionMatch) {
+        const major = versionMatch[1];
+        const minor = versionMatch[2];
+        const fallbackVersions = [];
+        for (let patch = 0; patch <= 5; patch++) {
+          fallbackVersions.push(`${major}.${minor}.${patch}`);
+        }
+        return fallbackVersions;
+      } else {
+        return ['1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.1.1'];
+      }
+    }
+    
+    return versions;
+  };
+
 
 
   const addPlatformChannel = () => {
@@ -148,7 +202,8 @@ const MirrorConfig = () => {
       name: `stable-${ocpVersions[0]}`,
       minVersion: '',
       maxVersion: '',
-      type: 'ocp'
+      type: 'ocp',
+      shortestPath: false
     };
     setConfig(prev => ({
       ...prev,
@@ -302,7 +357,7 @@ const MirrorConfig = () => {
     }));
   };
 
-  const updateOperatorPackageChannel = (operatorIndex, packageIndex, channelIndex, value) => {
+  const updateOperatorPackageChannel = async (operatorIndex, packageIndex, channelIndex, value) => {
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -317,6 +372,47 @@ const MirrorConfig = () => {
                         ...pkg, 
                         channels: (pkg.channels || []).map((channel, cIndex) => 
                           cIndex === channelIndex ? { ...channel, name: value } : channel
+                        )
+                      } 
+                    : pkg
+                )
+              }
+            : op
+        )
+      }
+    }));
+
+    // Fetch available versions for the selected channel
+    if (value) {
+      const operator = config.mirror.operators[operatorIndex];
+      const packageName = config.mirror.operators[operatorIndex].packages[packageIndex].name;
+      
+      if (operator && packageName) {
+        const versions = await fetchChannelVersions(packageName, value, operator.catalog);
+        const key = `${packageName}:${value}:${operator.catalog}`;
+        setAvailableVersions(prev => ({
+          ...prev,
+          [key]: versions
+        }));
+      }
+    }
+  };
+
+  const updateOperatorPackageChannelVersion = (operatorIndex, packageIndex, channelIndex, field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      mirror: {
+        ...prev.mirror,
+        operators: prev.mirror.operators.map((op, i) => 
+          i === operatorIndex 
+            ? { 
+                ...op, 
+                packages: op.packages.map((pkg, pIndex) => 
+                  pIndex === packageIndex 
+                    ? { 
+                        ...pkg, 
+                        channels: (pkg.channels || []).map((channel, cIndex) => 
+                          cIndex === channelIndex ? { ...channel, [field]: value } : channel
                         )
                       } 
                     : pkg
@@ -419,15 +515,56 @@ const MirrorConfig = () => {
     if (config.mirror.platform.channels && config.mirror.platform.channels.length > 0) {
       cleanConfig.mirror.platform = {
         graph: config.mirror.platform.graph,
-        channels: config.mirror.platform.channels
+        channels: config.mirror.platform.channels.map(channel => {
+          const cleanChannel = {
+            name: channel.name,
+            type: channel.type
+          };
+          
+          // Only add minVersion if it's not empty
+          if (channel.minVersion && channel.minVersion.trim() !== '') {
+            cleanChannel.minVersion = channel.minVersion;
+          }
+          
+          // Only add maxVersion if it's not empty
+          if (channel.maxVersion && channel.maxVersion.trim() !== '') {
+            cleanChannel.maxVersion = channel.maxVersion;
+          }
+          
+          // Only add shortestPath if it's true (don't show false)
+          if (channel.shortestPath === true) {
+            cleanChannel.shortestPath = true;
+          }
+          
+          return cleanChannel;
+        })
       };
     }
 
-    // Clean up operators - remove catalogVersion and availableOperators
+    // Clean up operators - remove catalogVersion and availableOperators, filter version fields
     config.mirror.operators.forEach(operator => {
       const cleanOperator = {
         catalog: operator.catalog,
-        packages: operator.packages
+        packages: operator.packages.map(pkg => ({
+          name: pkg.name,
+          channels: pkg.channels.map(channel => {
+            const cleanChannel = {
+              name: channel.name
+            };
+            
+            // Only add minVersion if it's not empty
+            if (channel.minVersion && channel.minVersion.trim() !== '') {
+              cleanChannel.minVersion = channel.minVersion;
+            }
+            
+            // Only add maxVersion if it's not empty
+            if (channel.maxVersion && channel.maxVersion.trim() !== '') {
+              cleanChannel.maxVersion = channel.maxVersion;
+            }
+            
+            return cleanChannel;
+          })
+        }))
       };
       cleanConfig.mirror.operators.push(cleanOperator);
     });
@@ -584,6 +721,20 @@ const MirrorConfig = () => {
                     placeholder="e.g., 4.16.10"
                   />
                 </div>
+                
+                <div className="form-group">
+                  <label>
+                    <input 
+                      type="checkbox" 
+                      checked={channel.shortestPath || false}
+                      onChange={(e) => updatePlatformChannel(index, 'shortestPath', e.target.checked)}
+                    />
+                    {' '}Shortest Path
+                  </label>
+                  <small className="form-text text-muted">
+                    Enable shortest path calculation for this channel. This will find the most direct upgrade path between versions.
+                  </small>
+                </div>
               </div>
             </div>
           ))}
@@ -739,7 +890,11 @@ const MirrorConfig = () => {
                                     onClick={() => {
                                       // Add channel if not already selected
                                       if (!pkg.channels?.some(ch => ch.name === channel)) {
-                                        const newChannel = { name: channel };
+                                        const newChannel = { 
+                                          name: channel,
+                                          minVersion: '',
+                                          maxVersion: ''
+                                        };
                                         setConfig(prev => ({
                                           ...prev,
                                           mirror: {
@@ -774,10 +929,10 @@ const MirrorConfig = () => {
                     
                     <div className="channels-container">
                       {pkg.channels && pkg.channels.map((channel, channelIndex) => (
-                        <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem' }}>
+                        <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem', alignItems: 'flex-end', gap: '0.5rem' }}>
                           <select
                             className="form-control"
-                            style={{ marginRight: '0.5rem' }}
+                             style={{ minWidth: '180px', maxWidth: '220px' }}
                             value={channel.name}
                             onChange={(e) => updateOperatorPackageChannel(opIndex, pkgIndex, channelIndex, e.target.value)}
                           >
@@ -793,8 +948,46 @@ const MirrorConfig = () => {
                               )) || [];
                             })()}
                           </select>
+                          
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap', fontWeight: '500' }}>Min Version:</label>
+                              <select
+                                className="form-control form-control-sm"
+                                style={{ width: '160px' }}
+                                value={channel.minVersion || ''}
+                                onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'minVersion', e.target.value)}
+                              >
+                                <option value="">Select version...</option>
+                                {getChannelVersions(opIndex, pkgIndex, channel.name).map(version => (
+                                  <option key={version} value={version}>
+                                    {version}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap', fontWeight: '500' }}>Max Version:</label>
+                              <select
+                                className="form-control form-control-sm"
+                                style={{ width: '160px' }}
+                                value={channel.maxVersion || ''}
+                                onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'maxVersion', e.target.value)}
+                              >
+                                <option value="">Select version...</option>
+                                {getChannelVersions(opIndex, pkgIndex, channel.name).map(version => (
+                                  <option key={version} value={version}>
+                                    {version}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          
                           <button
                             className="btn btn-sm btn-danger"
+                            style={{ alignSelf: 'flex-end', height: '46px' }}
                             onClick={() => removeOperatorPackageChannel(opIndex, pkgIndex, channelIndex)}
                           >
                             Remove
@@ -803,9 +996,7 @@ const MirrorConfig = () => {
                       ))}
 
                     </div>
-                    <small className="form-text text-muted">
-                      Click on channel tags above to add them
-                    </small>
+
                   </div>
                 </div>
               ))}

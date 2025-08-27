@@ -184,7 +184,7 @@ function App() {
                 <p>OpenShift Container Platform Mirroring Operations</p>
               </div>
               <div className="header-version">
-                <span className="version-badge">v3.0</span>
+                <span className="version-badge">v3.1.2</span>
               </div>
             </div>
           </div>
