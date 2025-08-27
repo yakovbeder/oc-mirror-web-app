@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
@@ -38,6 +38,7 @@ const Dashboard = () => {
       setRecentOperations(operationsRes.data);
       setSystemStatus(statusRes.data);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
     } finally {
@@ -111,8 +112,6 @@ const Dashboard = () => {
   // Find last operation status
   const lastOperation = recentOperations && recentOperations.length > 0 ? recentOperations[0] : null;
   const lastOperationStatus = lastOperation ? lastOperation.status : null;
-  const lastOperationStatusText = lastOperation ? getStatusText(lastOperation.status) : 'N/A';
-  const lastOperationStatusClass = lastOperation ? getStatusClass(lastOperation.status) : '';
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 import YAML from 'yaml';
@@ -35,13 +35,7 @@ const MirrorConfig = () => {
     '4.15', '4.16', '4.17', '4.18', '4.19'
   ];
 
-  const catalogVersions = [
-    'v4.15', 'v4.16', 'v4.17', 'v4.18', 'v4.19'
-  ];
 
-  const architectures = [
-    'amd64', 'arm64', 'ppc64le', 's390x'
-  ];
 
   // Use dynamic catalogs from API, fallback to static if needed
   const operatorCatalogs = availableCatalogs.length > 0 ? availableCatalogs : [
@@ -62,28 +56,13 @@ const MirrorConfig = () => {
     }
   ];
 
-  // Helper function to get catalog URL with version
-  const getCatalogUrlWithVersion = (catalogUrl, version) => {
-    if (catalogUrl.includes(':')) {
-      return catalogUrl;
-    }
-    return `${catalogUrl}:v${version}`;
-  };
 
-  // Helper function to get catalog display name with version
-  const getCatalogDisplayName = (catalog, version) => {
-    if (catalog.ocpVersion) {
-      return `${catalog.name} (OCP ${catalog.ocpVersion})`;
-    }
-    return `${catalog.name} (OCP ${version})`;
-  };
 
   useEffect(() => {
     fetchAvailableData();
   }, []);
 
-  // Memoize expensive operations
-  const memoizedConfig = useMemo(() => config, [config]);
+
 
   const fetchAvailableData = async () => {
     try {
@@ -96,6 +75,7 @@ const MirrorConfig = () => {
       setAvailableCatalogs(catalogsRes.data);
       // Don't fetch operators here - we'll fetch them per catalog
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching available data:', error);
       toast.error('Failed to load available channels and operators');
     } finally {
@@ -117,6 +97,7 @@ const MirrorConfig = () => {
       // Return just the operator names for backward compatibility
       return detailedOps.map(op => op.name);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching operators for catalog:', error);
       return [];
     }
@@ -136,6 +117,7 @@ const MirrorConfig = () => {
       }));
       return response.data;
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error(`Error fetching channels for ${operatorName} from ${catalogUrl}:`, error);
       toast.error(`Failed to load channels for ${operatorName}`);
       return ['stable'];
@@ -164,6 +146,7 @@ const MirrorConfig = () => {
       
       return versions;
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error(`Error generating versions for ${operatorName}/${channelName}:`, error);
       return [];
     }
@@ -487,12 +470,14 @@ const MirrorConfig = () => {
       });
       
       toast.success('Configuration saved successfully!');
+      // eslint-disable-next-line no-console
       console.log('Configuration saved:', response.data);
       
       // Reset custom name after successful save
       setCustomConfigName('');
       setShowCustomNameInput(false);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error saving configuration:', error);
       toast.error('Failed to save configuration');
     } finally {

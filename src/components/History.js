@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 
@@ -30,6 +30,7 @@ const History = () => {
     axios.get(`/api/operations/${selectedOperation.id}/logs`).then(res => {
       setLiveLog(res.data.logs || '');
     }).catch(err => {
+      // eslint-disable-next-line no-console
       console.error('Error fetching logs:', err);
       setLiveLog('No logs available for this operation.');
     });
@@ -44,6 +45,7 @@ const History = () => {
           }
         };
         es.onerror = (e) => {
+          // eslint-disable-next-line no-console
           console.error('SSE connection error:', e);
           es.close();
         };
@@ -52,6 +54,7 @@ const History = () => {
           es.close();
         };
       } catch (error) {
+        // eslint-disable-next-line no-console
         console.error('Error setting up SSE connection:', error);
       }
     }
@@ -70,6 +73,7 @@ const History = () => {
       const response = await axios.get('/api/operations/history');
       setOperations(response.data);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching history:', error);
       toast.error('Failed to load operation history');
     } finally {
@@ -82,6 +86,7 @@ const History = () => {
       const response = await axios.get(`/api/operations/${operationId}/details`);
       setOperationDetails(response.data);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching operation details:', error);
       // If details endpoint fails, create a basic details object from the operation
       const operation = operations.find(op => op.id === operationId);

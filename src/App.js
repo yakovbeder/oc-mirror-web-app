@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy, useMemo, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { ToastContainer, toast } from 'react-toastify';
+import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 
@@ -152,9 +152,7 @@ function App() {
     setSidebarCollapsed(prev => !prev);
   }, []);
 
-  const toggleMobileMenu = useCallback(() => {
-    setIsMobileMenuOpen(prev => !prev);
-  }, []);
+
 
   // Close mobile menu when clicking outside
   useEffect(() => {
