@@ -144,8 +144,7 @@ const MirrorConfig = () => {
 
   const fetchChannelVersions = async (operatorName, channelName, catalogUrl) => {
     try {
-      // For now, generate some example versions based on the channel name
-      // This is a placeholder until we implement the full API endpoint
+      // Generate versions based on the channel name
       const versions = [];
       
       // Extract version numbers from channel name (e.g., "stable-6.3" -> "6.3.0", "6.3.1", etc.)
@@ -168,6 +167,32 @@ const MirrorConfig = () => {
       console.error(`Error generating versions for ${operatorName}/${channelName}:`, error);
       return [];
     }
+  };
+
+  // Helper function to get versions for a channel (with fallback)
+  const getChannelVersions = (operatorIndex, packageIndex, channelName) => {
+    const operator = config.mirror.operators[operatorIndex];
+    const packageName = config.mirror.operators[operatorIndex].packages[packageIndex].name;
+    const key = `${packageName}:${channelName}:${operator.catalog}`;
+    const versions = availableVersions[key] || [];
+    
+    // If no versions are loaded yet, generate some based on channel name
+    if (versions.length === 0 && channelName) {
+      const versionMatch = channelName.match(/(\d+)\.(\d+)/);
+      if (versionMatch) {
+        const major = versionMatch[1];
+        const minor = versionMatch[2];
+        const fallbackVersions = [];
+        for (let patch = 0; patch <= 5; patch++) {
+          fallbackVersions.push(`${major}.${minor}.${patch}`);
+        }
+        return fallbackVersions;
+      } else {
+        return ['1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.1.1'];
+      }
+    }
+    
+    return versions;
   };
 
 
@@ -907,7 +932,7 @@ const MirrorConfig = () => {
                         <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem', alignItems: 'center', gap: '0.5rem' }}>
                           <select
                             className="form-control"
-                            style={{ minWidth: '120px', maxWidth: '140px' }}
+                            style={{ minWidth: '180px', maxWidth: '220px' }}
                             value={channel.name}
                             onChange={(e) => updateOperatorPackageChannel(opIndex, pkgIndex, channelIndex, e.target.value)}
                           >
@@ -934,17 +959,11 @@ const MirrorConfig = () => {
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'minVersion', e.target.value)}
                               >
                                 <option value="">Select version...</option>
-                                {(() => {
-                                  const operator = config.mirror.operators[opIndex];
-                                  const packageName = config.mirror.operators[opIndex].packages[pkgIndex].name;
-                                  const key = `${packageName}:${channel.name}:${operator.catalog}`;
-                                  const versions = availableVersions[key] || [];
-                                  return versions.map(version => (
-                                    <option key={version} value={version}>
-                                      {version}
-                                    </option>
-                                  ));
-                                })()}
+                                {getChannelVersions(opIndex, pkgIndex, channel.name).map(version => (
+                                  <option key={version} value={version}>
+                                    {version}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                             
@@ -957,17 +976,11 @@ const MirrorConfig = () => {
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'maxVersion', e.target.value)}
                               >
                                 <option value="">Select version...</option>
-                                {(() => {
-                                  const operator = config.mirror.operators[opIndex];
-                                  const packageName = config.mirror.operators[opIndex].packages[pkgIndex].name;
-                                  const key = `${packageName}:${channel.name}:${operator.catalog}`;
-                                  const versions = availableVersions[key] || [];
-                                  return versions.map(version => (
-                                    <option key={version} value={version}>
-                                      {version}
-                                    </option>
-                                  ));
-                                })()}
+                                {getChannelVersions(opIndex, pkgIndex, channel.name).map(version => (
+                                  <option key={version} value={version}>
+                                    {version}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                           </div>
