@@ -987,7 +987,7 @@ const MirrorConfig = () => {
                           
                           <button
                             className="btn btn-sm btn-danger"
-                            style={{ alignSelf: 'flex-end', height: '48px' }}
+                            style={{ alignSelf: 'flex-end', height: '38px' }}
                             onClick={() => removeOperatorPackageChannel(opIndex, pkgIndex, channelIndex)}
                           >
                             Remove
