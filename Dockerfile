@@ -104,9 +104,7 @@ USER nodejs
 # Expose port
 EXPOSE 3001
 
-# Health check (Docker format - Podman will show warning but ignore gracefully)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3001/api/system/info || exit 1
+
 
 # Start the application
 CMD ["node", "server/index.js"] 

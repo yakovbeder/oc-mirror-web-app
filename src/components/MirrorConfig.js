@@ -22,8 +22,7 @@ const MirrorConfig = () => {
     }
   });
 
-  const [availableChannels, setAvailableChannels] = useState([]);
-  const [availableOperators, setAvailableOperators] = useState([]);
+
   const [availableCatalogs, setAvailableCatalogs] = useState([]);
   const [operatorChannels, setOperatorChannels] = useState({});
   const [detailedOperators, setDetailedOperators] = useState({}); // Store detailed operator info by catalog
@@ -67,11 +66,7 @@ const MirrorConfig = () => {
   const fetchAvailableData = async () => {
     try {
       setLoading(true);
-      const [channelsRes, catalogsRes] = await Promise.all([
-        axios.get('/api/channels'),
-        axios.get('/api/catalogs')
-      ]);
-      setAvailableChannels(channelsRes.data);
+      const catalogsRes = await axios.get('/api/catalogs');
       setAvailableCatalogs(catalogsRes.data);
       // Don't fetch operators here - we'll fetch them per catalog
     } catch (error) {
