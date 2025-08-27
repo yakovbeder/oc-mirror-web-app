@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs').promises;
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
 const YAML = require('yaml');
 const { v4: uuidv4 } = require('uuid');
@@ -40,6 +40,9 @@ const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
 const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || './downloads';
+
+// Process tracking for operations
+const runningProcesses = new Map(); // operationId -> { pid, child }
 
 // Ensure directories exist
 async function ensureDirectories() {
@@ -1274,23 +1277,59 @@ app.post('/api/operators/refresh-cache', async (req, res) => {
 });
 
 // Helper function to normalize channel format
-// Helper function to filter out version-specific channels
-function filterGenericChannels(channelNames, operatorName) {
-  return channelNames.filter(channel => {
-    // Skip empty channels
-    if (!channel || !channel.trim()) return false;
+// Helper function to extract version information from channels
+function extractVersionInfo(channelNames, operatorName) {
+  const versions = new Set();
+  const genericChannels = [];
+  
+  channelNames.forEach(channel => {
+    if (!channel || !channel.trim()) return;
     
-    // Skip channels that contain the operator name followed by a version pattern
-    // This filters out channels like "advanced-cluster-management.v2.10.0"
-    if (operatorName && channel.includes(`${operatorName}.`)) return false;
+    // Extract version from operator-specific channels like "rhbk-operator.v26.2.4-opr.1"
+    // or "accuknox-operator.v0.2.1" (where operator name might be different)
+    if (operatorName && channel.includes('.v')) {
+      // Try exact operator name match first
+      if (channel.includes(`${operatorName}.`)) {
+        const versionMatch = channel.match(/\.v(.+)/);
+        if (versionMatch) {
+          versions.add(versionMatch[1]);
+        }
+        return;
+      }
+      
+      // Try partial operator name match (for cases like accuknox-operator-certified vs accuknox-operator)
+      const operatorBase = operatorName.replace(/-certified$/, '').replace(/-community$/, '');
+      if (channel.includes(`${operatorBase}.`)) {
+        const versionMatch = channel.match(/\.v(.+)/);
+        if (versionMatch) {
+          versions.add(versionMatch[1]);
+        }
+        return;
+      }
+      
+      // Try generic version extraction for any operator.v pattern
+      const genericVersionMatch = channel.match(/^[^.]+\.v(.+)/);
+      if (genericVersionMatch) {
+        versions.add(genericVersionMatch[1]);
+        return;
+      }
+    }
     
-    // Skip channels that look like version numbers (contain dots and numbers)
-    // This filters out channels like "v2.10.0", "1.0.1", etc.
-    if (/^v?\d+\.\d+\.\d+/.test(channel)) return false;
+    // Extract version from version-specific channels like "v26.2.4"
+    const versionMatch = channel.match(/^v?(\d+\.\d+\.\d+)/);
+    if (versionMatch) {
+      versions.add(versionMatch[1]);
+      return;
+    }
     
     // Keep generic channels like "stable", "alpha", "release-2.12", etc.
-    return true;
+    genericChannels.push(channel);
   });
+  
+  return {
+    genericChannels,
+    versions: Array.from(versions).sort()
+  };
 }
 
 function normalizeChannels(channels, operatorName = null) {
@@ -1322,12 +1361,93 @@ function normalizeChannels(channels, operatorName = null) {
     });
   }
   
-  // Filter out version-specific channels
-  const filteredChannels = filterGenericChannels(channelNames, operatorName);
+  // Extract version information and generic channels
+  const { genericChannels, versions } = extractVersionInfo(channelNames, operatorName);
   
-  // Convert back to channel objects
-  return filteredChannels.map(channel => ({ name: channel }));
+  // Convert back to channel objects with version information
+  const channelObjects = genericChannels.map(channel => ({ name: channel }));
+  
+  // Add version information to the first channel object for easy access
+  if (channelObjects.length > 0 && versions.length > 0) {
+    channelObjects[0].availableVersions = versions;
+  }
+  
+  return channelObjects;
 }
+
+// New endpoint to get operator versions
+app.get('/api/operators/:operator/versions', async (req, res) => {
+  try {
+    const { operator } = req.params;
+    const { catalog, channel } = req.query;
+    
+    // Use pre-fetched catalog data
+    const catalogData = await loadPreFetchedCatalogData();
+    if (catalogData) {
+      // If catalog is provided, extract catalog type and version
+      if (catalog) {
+        const catalogType = getCatalogNameFromUrl(catalog);
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.15';
+        const key = `${catalogType}:${catalogVersion}`;
+        
+        const operators = catalogData.operators[key];
+        if (operators) {
+          const operatorData = operators.find(op => op.name === operator);
+          if (operatorData) {
+            // Split the raw channel string into individual channels first
+            let channelNames = [];
+            if (operatorData.channels && operatorData.channels.length > 0) {
+              const rawChannels = operatorData.channels[0];
+              if (typeof rawChannels === 'string') {
+                if (rawChannels.includes('\n')) {
+                  channelNames = rawChannels.split('\n').filter(line => line.trim()).map(channel => channel.trim());
+                } else if (rawChannels.includes(' ')) {
+                  channelNames = rawChannels.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
+                } else {
+                  channelNames = [rawChannels];
+                }
+              }
+            }
+            
+            const { versions } = extractVersionInfo(channelNames, operatorData.name);
+            return res.json({ versions });
+          }
+        }
+      } else {
+        // Search across all catalogs
+        for (const [key, operators] of Object.entries(catalogData.operators)) {
+          const operatorData = operators.find(op => op.name === operator);
+          if (operatorData) {
+            // Split the raw channel string into individual channels first
+            let channelNames = [];
+            if (operatorData.channels && operatorData.channels.length > 0) {
+              const rawChannels = operatorData.channels[0];
+              if (typeof rawChannels === 'string') {
+                if (rawChannels.includes('\n')) {
+                  channelNames = rawChannels.split('\n').filter(line => line.trim()).map(channel => channel.trim());
+                } else if (rawChannels.includes(' ')) {
+                  channelNames = rawChannels.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
+                } else {
+                  channelNames = [rawChannels];
+                }
+              }
+            }
+            
+            const { versions } = extractVersionInfo(channelNames, operatorData.name);
+            return res.json({ versions });
+          }
+        }
+      }
+    }
+    
+    // Fallback response if operator not found
+    res.status(404).json({ error: 'Operator not found' });
+    
+  } catch (error) {
+    console.error(`Error getting versions for ${operator}:`, error);
+    res.status(500).json({ error: 'Failed to get operator versions' });
+  }
+});
 
 // New endpoint to get operator channel information
 app.get('/api/operator-channels/:operator', async (req, res) => {
@@ -1428,34 +1548,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       const normalizedChannels = normalizeChannels(channels, operator);
       res.json(normalizedChannels);
     } else {
-      // Fallback to static data
-      const fallbackChannels = {
-        'advanced-cluster-management': ['release-2.8', 'release-2.9', 'release-2.10', 'stable-2.8', 'stable-2.9', 'stable-2.10'],
-        'elasticsearch-operator': ['stable', 'stable-5.8', 'stable-5.9'],
-        'kiali-ossm': ['stable', 'stable-v1.75', 'stable-v1.76'],
-        'servicemeshoperator': ['stable', 'stable-2.4', 'stable-2.5'],
-        'openshift-pipelines-operator-rh': ['stable', 'stable-1.12', 'stable-1.13'],
-        'serverless-operator': ['stable', 'stable-1.32', 'stable-1.33'],
-        'jaeger-product': ['stable', 'stable-1.52', 'stable-1.53'],
-        'rhods-operator': ['stable', 'stable-1.32', 'stable-1.33'],
-        'openshift-gitops-operator': ['stable', 'stable-1.10', 'stable-1.11'],
-        'openshift-logging': ['stable', 'stable-5.8', 'stable-5.9'],
-        'openshift-monitoring': ['stable', 'stable-1.0', 'stable-1.1'],
-        'cluster-logging': ['stable', 'stable-5.8', 'stable-5.9'],
-        'local-storage-operator': ['stable', 'stable-4.12', 'stable-4.13'],
-        'node-feature-discovery-operator': ['stable', 'stable-4.12', 'stable-4.13'],
-        'performance-addon-operator': ['stable', 'stable-4.12', 'stable-4.13'],
-        'ptp-operator': ['stable', 'stable-4.12', 'stable-4.13'],
-        'sriov-network-operator': ['stable', 'stable-4.12', 'stable-4.13'],
-        'bare-metal-event-relay': ['stable', 'stable-4.12', 'stable-4.13'],
-        'cluster-baremetal-operator': ['stable', 'stable-4.12', 'stable-4.13'],
-        'metal3-operator': ['stable', 'stable-4.12', 'stable-4.13']
-      };
-      
-      const channels = fallbackChannels[operator] || ['stable'];
-      // Convert to consistent format with dynamic channels
-      const formattedChannels = normalizeChannels(channels, operator);
-      res.json(formattedChannels);
+      res.status(404).json({ error: 'No channels found for this operator' });
     }
   } catch (error) {
     console.error(`Error fetching channels for ${req.params.operator}:`, error);
@@ -1507,11 +1600,53 @@ app.post('/api/operations/start', async (req, res) => {
 
     await saveOperation(operation);
 
-    // Start oc-mirror process with v2
+    // Start oc-mirror process with v2 using spawn for better process control
     const logFile = path.join(LOGS_DIR, `${operationId}.log`);
-    const command = `oc-mirror --v2 --config ${configPath} --dest-tls-verify=false --src-tls-verify=false --cache-dir ${CACHE_DIR} --authfile /app/pull-secret.json file://mirror 2>&1 | tee ${logFile}`;
     
-    exec(command, async (error, stdout, stderr) => {
+    // Create log file stream
+    const logStream = require('fs').createWriteStream(logFile);
+    
+    // Spawn the oc-mirror process
+    const child = spawn('oc-mirror', [
+      '--v2',
+      '--config', configPath,
+      '--dest-tls-verify=false',
+      '--src-tls-verify=false',
+      '--cache-dir', CACHE_DIR,
+      '--authfile', '/app/pull-secret.json',
+      'file://mirror'
+    ], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    
+    // Track the process
+    runningProcesses.set(operationId, {
+      pid: child.pid,
+      child: child
+    });
+    
+    // Pipe output to log file and capture for processing
+    child.stdout.pipe(logStream);
+    child.stderr.pipe(logStream);
+    
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    child.on('close', async (code) => {
+      // Remove from running processes
+      runningProcesses.delete(operationId);
+      
+      // Close log stream
+      logStream.end();
+      
       let logs = stdout + stderr;
       // If logs are empty, try to read from log file
       if (!logs) {
@@ -1519,20 +1654,44 @@ app.post('/api/operations/start', async (req, res) => {
           logs = await fs.readFile(logFile, 'utf8');
         } catch {}
       }
+      
       const hasErrorInLogs = logs.toLowerCase().includes('[error]') || logs.toLowerCase().includes('error:');
       let finalStatus = 'success';
-      if (error || hasErrorInLogs) finalStatus = 'failed';
+      if (code !== 0 || hasErrorInLogs) finalStatus = 'failed';
+      
+      // Check if operation was manually stopped
       const opFile = path.join(OPERATIONS_DIR, `${operationId}.json`);
       let opData = JSON.parse(await fs.readFile(opFile, 'utf8'));
       if (opData.status === 'stopped') finalStatus = 'stopped';
+      
       const completedAt = new Date().toISOString();
       const duration = Math.floor((new Date(completedAt) - new Date(operation.startedAt)) / 1000);
+      
       await updateOperation(operationId, {
         status: finalStatus,
         completedAt,
         duration,
-        errorMessage: error ? error.message : (hasErrorInLogs ? 'Error detected in logs' : null),
+        errorMessage: code !== 0 ? `Process exited with code ${code}` : (hasErrorInLogs ? 'Error detected in logs' : null),
         logs: logs.split('\n')
+      });
+    });
+    
+    child.on('error', async (error) => {
+      // Remove from running processes
+      runningProcesses.delete(operationId);
+      
+      // Close log stream
+      logStream.end();
+      
+      const completedAt = new Date().toISOString();
+      const duration = Math.floor((new Date(completedAt) - new Date(operation.startedAt)) / 1000);
+      
+      await updateOperation(operationId, {
+        status: 'failed',
+        completedAt,
+        duration,
+        errorMessage: error.message,
+        logs: [error.message]
       });
     });
 
@@ -1546,12 +1705,37 @@ app.post('/api/operations/start', async (req, res) => {
 app.post('/api/operations/:id/stop', async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Check if process is running and kill it
+    const processInfo = runningProcesses.get(id);
+    if (processInfo) {
+      try {
+        // Kill the process
+        processInfo.child.kill('SIGTERM');
+        
+        // Wait a bit for graceful shutdown, then force kill if needed
+        setTimeout(() => {
+          if (processInfo.child.killed === false) {
+            processInfo.child.kill('SIGKILL');
+          }
+        }, 5000);
+        
+        // Remove from running processes
+        runningProcesses.delete(id);
+      } catch (killError) {
+        console.error('Error killing process:', killError);
+      }
+    }
+    
+    // Update operation status
     await updateOperation(id, {
       status: 'stopped',
       completedAt: new Date().toISOString()
     });
+    
     res.json({ message: 'Operation stopped successfully' });
   } catch (error) {
+    console.error('Error stopping operation:', error);
     res.status(500).json({ error: 'Failed to stop operation' });
   }
 });

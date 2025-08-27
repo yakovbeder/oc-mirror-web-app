@@ -121,30 +121,50 @@ const MirrorConfig = () => {
 
   const fetchChannelVersions = async (operatorName, channelName, catalogUrl) => {
     try {
-      // Generate versions based on the channel name
-      const versions = [];
+      // First, try to fetch actual versions from the API
+      const response = await axios.get(`/api/operators/${operatorName}/versions`, {
+        params: { catalog: catalogUrl }
+      });
       
-      // Extract version numbers from channel name (e.g., "stable-6.3" -> "6.3.0", "6.3.1", etc.)
-      const versionMatch = channelName.match(/(\d+)\.(\d+)/);
-      if (versionMatch) {
-        const major = versionMatch[1];
-        const minor = versionMatch[2];
-        
-        // Generate a few version options
-        for (let patch = 0; patch <= 5; patch++) {
-          versions.push(`${major}.${minor}.${patch}`);
-        }
-      } else {
-        // For channels without version numbers, provide some common options
-        versions.push('1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.1.1');
+      if (response.data && response.data.versions && response.data.versions.length > 0) {
+        return response.data.versions;
       }
-      
-      return versions;
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error(`Error generating versions for ${operatorName}/${channelName}:`, error);
-      return [];
+      console.error(`Error fetching versions for ${operatorName}/${channelName}:`, error);
     }
+    
+    // Fallback to generating versions based on the channel name with broader ranges
+    const versions = [];
+    
+    // Extract version numbers from channel name (e.g., "stable-6.3" -> "6.3.0", "6.3.1", etc.)
+    const versionMatch = channelName.match(/(\d+)\.(\d+)/);
+    if (versionMatch) {
+      const major = versionMatch[1];
+      const minor = versionMatch[2];
+      
+      // Generate a broader range of versions for the same minor version
+      for (let patch = 0; patch <= 10; patch++) {
+        versions.push(`${major}.${minor}.${patch}`);
+      }
+      
+      // Also generate versions for the next minor version
+      for (let patch = 0; patch <= 5; patch++) {
+        versions.push(`${major}.${parseInt(minor) + 1}.${patch}`);
+      }
+      
+      // And some versions for the previous minor version
+      if (parseInt(minor) > 0) {
+        for (let patch = 0; patch <= 5; patch++) {
+          versions.push(`${major}.${parseInt(minor) - 1}.${patch}`);
+        }
+      }
+    } else {
+      // For channels without version numbers, provide broader common options
+      versions.push('1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.1.1', '1.2.0', '1.2.1', '2.0.0', '2.0.1');
+    }
+    
+    return versions;
   };
 
   // Helper function to get versions for a channel (with fallback)
@@ -154,23 +174,29 @@ const MirrorConfig = () => {
     const key = `${packageName}:${channelName}:${operator.catalog}`;
     const versions = availableVersions[key] || [];
     
-    // If no versions are loaded yet, generate some based on channel name
-    if (versions.length === 0 && channelName) {
-      const versionMatch = channelName.match(/(\d+)\.(\d+)/);
-      if (versionMatch) {
-        const major = versionMatch[1];
-        const minor = versionMatch[2];
-        const fallbackVersions = [];
-        for (let patch = 0; patch <= 5; patch++) {
-          fallbackVersions.push(`${major}.${minor}.${patch}`);
-        }
-        return fallbackVersions;
-      } else {
-        return ['1.0.0', '1.0.1', '1.0.2', '1.1.0', '1.1.1'];
-      }
+    // If we have API-fetched versions, return them
+    if (versions.length > 0) {
+      return versions;
     }
     
-    return versions;
+    // If no versions are loaded yet and we have a channel name, trigger API fetch
+    if (versions.length === 0 && channelName && operator && packageName) {
+      // Trigger the API fetch asynchronously
+      fetchChannelVersions(packageName, channelName, operator.catalog).then(fetchedVersions => {
+        if (fetchedVersions && fetchedVersions.length > 0) {
+          setAvailableVersions(prev => ({
+            ...prev,
+            [key]: fetchedVersions
+          }));
+        }
+      }).catch(error => {
+        // eslint-disable-next-line no-console
+        console.error(`Error fetching versions for ${packageName}/${channelName}:`, error);
+      });
+    }
+    
+    // Return empty array while waiting for API response
+    return [];
   };
 
 
@@ -478,6 +504,41 @@ const MirrorConfig = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Function to validate version ranges
+  const validateVersionRange = (minVersion, maxVersion, availableVersions) => {
+    if (!minVersion && !maxVersion) {
+      return { isValid: true, message: '' };
+    }
+    
+    // Convert versions to comparable format
+    const versionToNumber = (version) => {
+      const parts = version.split('.').map(Number);
+      return parts[0] * 1000000 + parts[1] * 1000 + (parts[2] || 0);
+    };
+    
+    const minNum = minVersion ? versionToNumber(minVersion) : 0;
+    const maxNum = maxVersion ? versionToNumber(maxVersion) : Number.MAX_SAFE_INTEGER;
+    
+    if (minNum > maxNum) {
+      return { isValid: false, message: 'Min version cannot be greater than max version' };
+    }
+    
+    // Check if any available versions fall within the range
+    const hasValidVersions = availableVersions.some(version => {
+      const versionNum = versionToNumber(version);
+      return versionNum >= minNum && versionNum <= maxNum;
+    });
+    
+    if (!hasValidVersions) {
+      return { 
+        isValid: false, 
+        message: `No versions available in range ${minVersion || '0.0.0'} to ${maxVersion || 'latest'}` 
+      };
+    }
+    
+    return { isValid: true, message: '' };
   };
 
   // Function to generate clean YAML configuration for preview and download
