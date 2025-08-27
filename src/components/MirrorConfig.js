@@ -949,12 +949,12 @@ const MirrorConfig = () => {
                             })()}
                           </select>
                           
-                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap' }}>Min:</label>
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap', fontWeight: '500' }}>Min Version:</label>
                               <select
                                 className="form-control form-control-sm"
-                                style={{ width: '120px' }}
+                                style={{ width: '110px' }}
                                 value={channel.minVersion || ''}
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'minVersion', e.target.value)}
                               >
@@ -967,11 +967,11 @@ const MirrorConfig = () => {
                               </select>
                             </div>
                             
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap' }}>Max:</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap', fontWeight: '500' }}>Max Version:</label>
                               <select
                                 className="form-control form-control-sm"
-                                style={{ width: '120px' }}
+                                style={{ width: '110px' }}
                                 value={channel.maxVersion || ''}
                                 onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'maxVersion', e.target.value)}
                               >
