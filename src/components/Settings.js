@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 
@@ -40,6 +40,7 @@ const Settings = () => {
       const response = await axios.get('/api/settings');
       setSettings(response.data);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching settings:', error);
     }
   };
@@ -49,6 +50,7 @@ const Settings = () => {
       const response = await axios.get('/api/system/info');
       setSystemInfo(response.data);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching system info:', error);
     }
   };
@@ -59,6 +61,7 @@ const Settings = () => {
       await axios.post('/api/settings', settings);
       toast.success('Settings saved successfully!');
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error saving settings:', error);
       toast.error('Failed to save settings');
     } finally {
@@ -72,6 +75,7 @@ const Settings = () => {
       await axios.post('/api/settings/test-registry', settings.registryCredentials);
       toast.success('Registry connection successful!');
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error testing registry connection:', error);
       toast.error('Registry connection failed');
     } finally {
@@ -85,6 +89,7 @@ const Settings = () => {
       await axios.post('/api/settings/cleanup-logs');
       toast.success('Log cleanup completed successfully!');
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error cleaning up logs:', error);
       toast.error('Failed to cleanup logs');
     } finally {

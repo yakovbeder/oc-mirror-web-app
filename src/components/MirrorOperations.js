@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 
@@ -17,6 +17,7 @@ const MirrorOperations = () => {
     fetchConfigurations();
     const interval = setInterval(fetchOperations, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ const MirrorOperations = () => {
         stream.close();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runningOperation]);
 
   const fetchOperations = async () => {
@@ -48,6 +50,7 @@ const MirrorOperations = () => {
         fetchLogs(running.id);
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching operations:', error);
     }
   };
@@ -57,6 +60,7 @@ const MirrorOperations = () => {
       const response = await axios.get('/api/config/list');
       setAvailableConfigs(response.data);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching configurations:', error);
     }
   };
@@ -66,6 +70,7 @@ const MirrorOperations = () => {
       const response = await axios.get(`/api/operations/${operationId}/logs`);
       setLogs(response.data.logs || 'No logs available for this operation');
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error fetching logs:', error);
       setLogs('Error loading logs: ' + (error.response?.data?.message || error.message));
     }
@@ -86,6 +91,7 @@ const MirrorOperations = () => {
     };
 
     eventSource.onerror = (error) => {
+      // eslint-disable-next-line no-console
       console.error('SSE error:', error);
       eventSource.close();
       setLogStream(null);
@@ -124,6 +130,7 @@ const MirrorOperations = () => {
             const logResponse = await axios.get(`/api/operations/${response.data.id}/logs`);
             setLogs(logResponse.data.logs || '');
           } catch (error) {
+            // eslint-disable-next-line no-console
             console.error('Error polling logs:', error);
           }
         }, 2000); // Poll every 2 seconds
@@ -134,6 +141,7 @@ const MirrorOperations = () => {
         }, 300000); // Stop after 5 minutes
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error starting operation:', error);
       toast.error('Failed to start operation: ' + (error.response?.data?.message || error.message));
     } finally {
@@ -147,6 +155,7 @@ const MirrorOperations = () => {
       toast.success('Operation stopped successfully!');
       fetchOperations();
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error stopping operation:', error);
       toast.error('Failed to stop operation');
     }
@@ -162,6 +171,7 @@ const MirrorOperations = () => {
       toast.success('Operation deleted successfully!');
       fetchOperations();
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error deleting operation:', error);
       toast.error('Failed to delete operation');
     }
@@ -212,10 +222,7 @@ const MirrorOperations = () => {
     }
   };
 
-  const viewLogs = async (operationId) => {
-    setShowLogs(true);
-    await fetchLogs(operationId);
-  };
+
 
   const clearLogs = () => {
     setLogs('');
@@ -316,7 +323,7 @@ const MirrorOperations = () => {
           const data = await response.json();
           
           // If no progress data, the download has completed
-          if (!data || data.progress === 0 && data.message === 'Initializing download...') {
+          if (!data || (data.progress === 0 && data.message === 'Initializing download...')) {
             clearInterval(pollInterval);
             pollInterval = null;
             document.body.removeChild(progressModal);
@@ -344,6 +351,7 @@ const MirrorOperations = () => {
             return; // Stop polling immediately
           }
         } catch (error) {
+          // eslint-disable-next-line no-console
           console.error('Progress polling error:', error);
           // If there's an error, assume download is complete and close modal
           clearInterval(pollInterval);
@@ -376,6 +384,7 @@ const MirrorOperations = () => {
           window.URL.revokeObjectURL(url);
         })
         .catch(error => {
+          // eslint-disable-next-line no-console
           console.error('Download error:', error);
           clearInterval(pollInterval);
           document.body.removeChild(progressModal);
@@ -392,6 +401,7 @@ const MirrorOperations = () => {
           progressBar.style.width = `${data.progress}%`;
           progressMessage.textContent = data.message;
         } catch (error) {
+          // eslint-disable-next-line no-console
           console.error('Initial progress polling error:', error);
         }
       };
@@ -408,6 +418,7 @@ const MirrorOperations = () => {
       });
       
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error downloading mirror files:', error);
       toast.error('Failed to download mirror files');
     }

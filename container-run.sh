@@ -75,40 +75,77 @@ check_container_runtime() {
     print_success "$CONTAINER_ENGINE is available and running"
 }
 
+# Fix directory permissions for container user
+fix_permissions() {
+    print_status "Checking directory permissions..."
+    
+    # Check if directories are writable by current user
+    if [ -w "data" ] && [ -w "downloads" ]; then
+        print_success "Directories have proper permissions"
+        return 0
+    fi
+    
+    # Check if directories are already owned by container user (UID 1001 or similar)
+    local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
+    local downloads_owner=$(stat -c '%u' downloads/ 2>/dev/null || echo "unknown")
+    
+    if [ "$data_owner" != "1001" ] && [ "$data_owner" != "101000" ]; then
+        print_status "Fixing directory permissions for container user..."
+        
+        # Try to fix permissions, but don't fail if we can't
+        if chmod -R 755 data/ downloads/ 2>/dev/null; then
+            print_success "Permissions set to 755"
+        else
+            print_warning "Could not set permissions to 755, trying alternative approach..."
+            if chmod -R 777 data/ downloads/ 2>/dev/null; then
+                print_success "Permissions set to 777 (world-writable)"
+            else
+                print_warning "Could not change permissions. Container may have issues."
+                print_warning "You may need to run: sudo chmod -R 755 data/ downloads/"
+            fi
+        fi
+        
+        # Try to change ownership, but don't fail if we can't
+        if chown -R 1001:1001 data/ downloads/ 2>/dev/null; then
+            print_success "Ownership changed to container user (UID 1001)"
+        else
+            print_warning "Could not change ownership (may need sudo). Continuing anyway..."
+        fi
+    else
+        print_success "Directories already owned by container user (UID $data_owner)"
+    fi
+}
+
 # Create necessary directories
 create_directories() {
     print_status "Checking data directories..."
     
-    # Check if directories already exist and have proper permissions
-    if [ -d "data" ] && [ -d "downloads" ] && [ -w "data" ] && [ -w "downloads" ]; then
-        print_success "Data directories already exist with proper permissions"
-        return 0
+    # Create directories if they don't exist
+    if [ ! -d "data" ]; then
+        print_status "Creating data directory structure..."
+        mkdir -p data/configs
+        mkdir -p data/operations
+        mkdir -p data/logs
+        mkdir -p data/cache
+    else
+        print_success "Data directory already exists"
     fi
     
-    print_status "Creating data directories..."
+    if [ ! -d "downloads" ]; then
+        print_status "Creating downloads directory..."
+        mkdir -p downloads
+    else
+        print_success "Downloads directory already exists"
+    fi
     
-    mkdir -p data/configs
-    mkdir -p data/operations
-    mkdir -p data/logs
-    mkdir -p data/cache
-    mkdir -p downloads
-    
-    # Fix permissions for nodejs user (UID 1001)
-    print_status "Setting proper permissions for container user..."
-    chmod -R 755 data/ downloads/
-    chown -R 1001:1001 data/ downloads/ 2>/dev/null || {
-        print_warning "Could not change ownership (may need sudo). Trying alternative approach..."
-        # Alternative: make directories writable by all
-        chmod -R 777 data/ downloads/
-    }
-    
-    print_success "Data directories created with proper permissions"
+    # Fix permissions for container user
+    fix_permissions
 }
 
     # Fetch catalogs on host (if explicitly requested)
     fetch_catalogs() {
         if [ "$FETCH_CATALOGS" != "true" ]; then
-            print_status "Skipping catalog fetch (will use fallback data)"
+            print_status "Skipping catalog fetch (using existing catalog data)"
             return 0
         fi
 
@@ -217,42 +254,7 @@ show_status() {
     echo ""
 }
 
-# Fix permissions for existing installations
-fix_permissions() {
-    print_status "Checking data directory permissions..."
-    
-    # Check if permissions are already correct
-    if [ -d "data" ] && [ -w "data" ] && [ -d "downloads" ] && [ -w "downloads" ]; then
-        print_success "Data directories already have proper permissions"
-        return 0
-    fi
-    
-    print_status "Fixing data directory permissions..."
-    
-    if [ -d "data" ]; then
-        # Try to change ownership to nodejs user (UID 1001)
-        if chown -R 1001:1001 data/ 2>/dev/null; then
-            chmod -R 755 data/
-            print_success "Data directory permissions fixed successfully"
-        else
-            print_warning "Could not change ownership. Making directories world-writable..."
-            chmod -R 777 data/
-            print_success "Made data directories world-writable"
-        fi
-    fi
-    
-    if [ -d "downloads" ]; then
-        # Try to change ownership to nodejs user (UID 1001)
-        if chown -R 1001:1001 downloads/ 2>/dev/null; then
-            chmod -R 755 downloads/
-            print_success "Downloads directory permissions fixed successfully"
-        else
-            print_warning "Could not change ownership. Making directories world-writable..."
-            chmod -R 777 downloads/
-            print_success "Made downloads directories world-writable"
-        fi
-    fi
-}
+
 
 # Main execution
 main() {
