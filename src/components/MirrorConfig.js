@@ -329,6 +329,32 @@ const MirrorConfig = () => {
     }));
   };
 
+  const updateOperatorPackageChannelVersion = (operatorIndex, packageIndex, channelIndex, field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      mirror: {
+        ...prev.mirror,
+        operators: prev.mirror.operators.map((op, i) => 
+          i === operatorIndex 
+            ? { 
+                ...op, 
+                packages: op.packages.map((pkg, pIndex) => 
+                  pIndex === packageIndex 
+                    ? { 
+                        ...pkg, 
+                        channels: (pkg.channels || []).map((channel, cIndex) => 
+                          cIndex === channelIndex ? { ...channel, [field]: value } : channel
+                        )
+                      } 
+                    : pkg
+                )
+              }
+            : op
+        )
+      }
+    }));
+  };
+
   const addAdditionalImage = () => {
     const newImage = {
       name: ''
@@ -446,11 +472,30 @@ const MirrorConfig = () => {
       };
     }
 
-    // Clean up operators - remove catalogVersion and availableOperators
+    // Clean up operators - remove catalogVersion and availableOperators, filter version fields
     config.mirror.operators.forEach(operator => {
       const cleanOperator = {
         catalog: operator.catalog,
-        packages: operator.packages
+        packages: operator.packages.map(pkg => ({
+          name: pkg.name,
+          channels: pkg.channels.map(channel => {
+            const cleanChannel = {
+              name: channel.name
+            };
+            
+            // Only add minVersion if it's not empty
+            if (channel.minVersion && channel.minVersion.trim() !== '') {
+              cleanChannel.minVersion = channel.minVersion;
+            }
+            
+            // Only add maxVersion if it's not empty
+            if (channel.maxVersion && channel.maxVersion.trim() !== '') {
+              cleanChannel.maxVersion = channel.maxVersion;
+            }
+            
+            return cleanChannel;
+          })
+        }))
       };
       cleanConfig.mirror.operators.push(cleanOperator);
     });
@@ -776,7 +821,11 @@ const MirrorConfig = () => {
                                     onClick={() => {
                                       // Add channel if not already selected
                                       if (!pkg.channels?.some(ch => ch.name === channel)) {
-                                        const newChannel = { name: channel };
+                                        const newChannel = { 
+                                          name: channel,
+                                          minVersion: '',
+                                          maxVersion: ''
+                                        };
                                         setConfig(prev => ({
                                           ...prev,
                                           mirror: {
@@ -811,10 +860,10 @@ const MirrorConfig = () => {
                     
                     <div className="channels-container">
                       {pkg.channels && pkg.channels.map((channel, channelIndex) => (
-                        <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem' }}>
+                        <div key={channelIndex} className="channel-item" style={{ display: 'flex', marginBottom: '0.5rem', alignItems: 'center', gap: '0.5rem' }}>
                           <select
                             className="form-control"
-                            style={{ marginRight: '0.5rem' }}
+                            style={{ minWidth: '150px' }}
                             value={channel.name}
                             onChange={(e) => updateOperatorPackageChannel(opIndex, pkgIndex, channelIndex, e.target.value)}
                           >
@@ -830,6 +879,33 @@ const MirrorConfig = () => {
                               )) || [];
                             })()}
                           </select>
+                          
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap' }}>Min:</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                style={{ width: '80px' }}
+                                value={channel.minVersion || ''}
+                                onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'minVersion', e.target.value)}
+                                placeholder="e.g., 6.3.0"
+                              />
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <label style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'nowrap' }}>Max:</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                style={{ width: '80px' }}
+                                value={channel.maxVersion || ''}
+                                onChange={(e) => updateOperatorPackageChannelVersion(opIndex, pkgIndex, channelIndex, 'maxVersion', e.target.value)}
+                                placeholder="e.g., 6.3.1"
+                              />
+                            </div>
+                          </div>
+                          
                           <button
                             className="btn btn-sm btn-danger"
                             onClick={() => removeOperatorPackageChannel(opIndex, pkgIndex, channelIndex)}
