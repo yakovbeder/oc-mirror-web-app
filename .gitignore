@@ -96,4 +96,4 @@ catalog-data/*
 !catalog-data/.gitkeep
 
 # Build and deployment scripts
-build-for-quay.sh 
+# build-for-quay.sh (moved to build-for-quay/ directory) 

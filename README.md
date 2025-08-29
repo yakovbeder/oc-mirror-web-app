@@ -304,7 +304,8 @@ oc-mirror-web-app/
 ├── container-run.sh      # Easy container runner (Docker/Podman)
 ├── quay-run.sh           # Quay.io image runner
 ├── podman-compose.sh     # Podman-specific compose runner
-├── build-for-quay.sh     # Quay.io build and push script
+├── build-for-quay/       # Build and deployment scripts
+│   └── build-for-quay.sh # Quay.io build and push script
 ├── fetch-catalogs-host.sh # Catalog fetching script
 ├── package.json          # Node.js dependencies
 ├── API.md                # API documentation
