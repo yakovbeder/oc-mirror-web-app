@@ -137,10 +137,10 @@ Once running, access the web interface at:
 # Check which container engine is detected
 ./container-run.sh --engine
 
-# Build with catalog fetching (complete data, slower build)
+# Build with catalog fetching
 ./container-run.sh --fetch-catalogs
 
-# Build without fetching catalogs (fast build, uses fallback data)
+# Build without fetching catalogs
 ./container-run.sh
 ```
 
@@ -165,7 +165,7 @@ The application now pre-fetches operator catalogs for all supported OCP versions
 - **Enhanced compatibility** - Supports multiple catalog formats including index.yaml
 
 **Build Options:**
-- **Default (Fast)**: No catalog fetch (uses fallback data, builds in 2-3 minutes)
+- **Default (Fast)**: No catalog fetch (builds in 2-3 minutes)
 - **Complete build**: Use `--fetch-catalogs` flag (takes 5-10 minutes, provides complete data)
 
 **Supported Catalogs:**
@@ -264,9 +264,13 @@ docker-compose down
 - **Advanced Download System**: Polling-based progress tracking with robust error handling and automatic cleanup
 
 ### 🛡️ Security Features
-- **Input Validation**: Comprehensive validation of all inputs
-- **File Sanitization**: Secure file handling and processing
+- **Input Validation**: Comprehensive validation of all user inputs and configuration parameters
+- **File Sanitization**: Secure file handling and processing with path validation
 - **Error Isolation**: Operations are isolated to prevent system impact
+- **Non-root Container**: Application runs as non-root user (nodejs:1001) for enhanced security
+- **Container Security**: Multi-stage builds with minimal attack surface
+- **Network Security**: Secure communication between frontend and backend components
+- **Data Protection**: Secure handling of pull secrets and sensitive configuration data
 
 [⬆️ Back to Top](#-table-of-contents)
 
@@ -279,17 +283,33 @@ oc-mirror-web-app/
 │   └── App.js             # Main application
 ├── server/                # Node.js backend
 │   └── index.js           # API server
+├── catalog-data/           # Pre-fetched operator catalogs
+│   ├── redhat-operator-index/    # Red Hat operator data
+│   ├── certified-operator-index/ # Certified operator data
+│   ├── community-operator-index/ # Community operator data
+│   └── catalog-index.json       # Master catalog index
 ├── data/                  # Persistent data (created automatically)
 │   ├── configs/           # Mirror configurations
 │   ├── operations/        # Operation history
 │   ├── logs/             # Application logs
 │   └── cache/            # oc-mirror v2 cache
+├── downloads/             # Download directory for generated files
 ├── examples/              # Configuration examples
+├── docs/                  # Documentation and screenshots
+├── public/                # Static assets
+├── pull-secret/           # Pull secret storage
+├── .github/               # GitHub workflows and templates
 ├── Dockerfile            # Container definition
 ├── docker-compose.yml    # Multi-service setup
 ├── container-run.sh      # Easy container runner (Docker/Podman)
 ├── quay-run.sh           # Quay.io image runner
 ├── podman-compose.sh     # Podman-specific compose runner
+├── build-for-quay.sh     # Quay.io build and push script
+├── fetch-catalogs-host.sh # Catalog fetching script
+├── package.json          # Node.js dependencies
+├── API.md                # API documentation
+├── SUMMARY.md            # Feature summary
+├── QUICKSTART.md         # Quick start guide
 └── README.md             # This file
 ```
 
