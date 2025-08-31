@@ -75,7 +75,7 @@ The easiest way to run this application is using containers. This approach requi
 - **Docker** OR **Podman** (choose one!)
 - **OpenShift pull-secret.json** (required to connect to Red Hat registries)
 
-> **Note:** You must provide a valid `pull-secret.json` file (downloadable from https://console.redhat.com/openshift/downloads#tool-pull-secret) in order to mirror images from Red Hat registries.
+> **Note:** You must provide a valid `pull-secret.json` file (downloadable from https://console.redhat.com/openshift/downloads#tool-pull-secret) in order to mirror images from Red Hat registries.  This should be saved in the pull-secret directory.
 
 ### 1. Clone and Navigate
 
