@@ -257,6 +257,9 @@ If you encounter configuration errors:
 - **Solution**: Use the application's web interface to generate valid configurations
 - **Note**: The application validates configurations before saving
 
+### Invalid GPG signature for images error
+See https://access.redhat.com/solutions/6542281 for solution
+
 ## 📊 Verification
 
 After starting, verify everything is working:
