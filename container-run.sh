@@ -2,7 +2,7 @@
 
 # OC Mirror v2 Web Application - Containerized Runner
 # This script runs the application in a container without requiring any host installations
-# Supports both Docker and Podman
+# Supports Podman only
 
 set -e
 
@@ -29,17 +29,14 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Detect container runtime (Docker or Podman)
+# Detect container runtime (Podman only)
 detect_container_runtime() {
-    if command -v docker &> /dev/null && docker info &> /dev/null; then
-        CONTAINER_ENGINE="docker"
-        print_success "Using Docker as container runtime"
-    elif command -v podman &> /dev/null && podman info &> /dev/null; then
+    if command -v podman &> /dev/null && podman info &> /dev/null; then
         CONTAINER_ENGINE="podman"
         print_success "Using Podman as container runtime"
     else
-        print_error "Neither Docker nor Podman is available or running."
-        print_error "Please install Docker or Podman and try again."
+        print_error "Podman is not available or running."
+        print_error "Please install Podman and try again."
         exit 1
     fi
 }
@@ -182,15 +179,10 @@ build_image() {
     print_status "Building container image with $CONTAINER_ENGINE..."
     
     # Build for native architecture (do not force amd64)
-    if [ "$CONTAINER_ENGINE" = "podman" ] || [ "$CONTAINER_ENGINE" = "docker" ]; then
-        if $CONTAINER_ENGINE build -t oc-mirror-web-app .; then
-            print_success "Container image built successfully (native arch)"
-        else
-            print_error "Failed to build container image (native arch)"
-            exit 1
-        fi
+    if $CONTAINER_ENGINE build -t oc-mirror-web-app .; then
+        print_success "Container image built successfully (native arch)"
     else
-        print_error "Unsupported container engine: $CONTAINER_ENGINE"
+        print_error "Failed to build container image (native arch)"
         exit 1
     fi
 }
@@ -307,8 +299,7 @@ case "${1:-}" in
         echo "  $0 --fetch-catalogs # Build with catalog fetching (complete data)"
         echo ""
         echo "Container Engine Support:"
-        echo "  - Docker (if available)"
-        echo "  - Podman (if available)"
+        echo "  - Podman (required)"
         echo ""
         echo "Catalog Fetching:"
         echo "  By default, the build process skips catalog fetching for faster builds."

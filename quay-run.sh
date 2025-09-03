@@ -62,11 +62,8 @@ check_container_runtime() {
     if command -v podman &> /dev/null; then
         CONTAINER_ENGINE="podman"
         print_success "Using Podman as container engine"
-    elif command -v docker &> /dev/null; then
-        CONTAINER_ENGINE="docker"
-        print_success "Using Docker as container engine"
     else
-        print_error "Neither Podman nor Docker found. Please install one of them."
+        print_error "Podman not found. Please install Podman."
         exit 1
     fi
 }
