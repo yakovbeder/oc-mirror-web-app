@@ -7,7 +7,7 @@
 This is the **easiest and most reliable** way to run the application. No host dependencies required!
 
 ### Step 1: Prerequisites
-- **Docker** OR **Podman** (choose one!)
+- **Podman** (required)
 
 ### Step 2: Clone and Run
 
@@ -32,7 +32,7 @@ This is the **easiest and most reliable** way to run the application. No host de
 > - This ensures you have access to the complete list of operators and their channels
 > - Subsequent runs can use `./container-run.sh` (without the flag) for faster startup
 
-The script automatically detects whether you have Docker or Podman and uses the appropriate one.
+The script automatically detects whether you have Podman and uses it.
 
 ### Step 3: Access the Application
 - **Web Interface**: http://localhost:3000
@@ -60,7 +60,7 @@ The script automatically detects whether you have Docker or Podman and uses the 
 ```bash
 ./container-run.sh
 ```
-The script automatically detects Docker or Podman and uses the appropriate one.
+The script automatically detects Podman and uses it.
 
 ### Option 2: Quay.io Images (Production Ready)
 ```bash
@@ -89,17 +89,7 @@ chmod +x podman-compose.sh
 ./podman-compose.sh down
 ```
 
-### Option 4: Docker Compose
-```bash
-# Start the application
-docker-compose up -d
 
-# View logs
-docker-compose logs -f
-
-# Stop the application
-docker-compose down
-```
 
 ## 📋 What's Included
 
@@ -183,18 +173,12 @@ The container will automatically mount and use it.
 ```bash
 # Check container runtime status
 podman info
-# or
-docker info
 
 # View build logs
 podman build -t oc-mirror-web-app .
-# or
-docker build -t oc-mirror-web-app .
 
 # Check container logs
 podman logs oc-mirror-web-app
-# or
-docker logs oc-mirror-web-app
 ```
 
 ### Port Already in Use
@@ -214,7 +198,7 @@ lsof -i :3000
 # Make script executable
 chmod +x container-run.sh
 
-# Run with sudo if needed (for Docker)
+# Run with sudo if needed
 sudo ./container-run.sh
 
 # For Podman, ensure user namespace is configured
@@ -269,8 +253,6 @@ After starting, verify everything is working:
 3. **Container Status**: 
    ```bash
    podman ps
-   # or
-   docker ps
    ```
 4. **Data Directory**: `ls -la data/` shows created directories
 

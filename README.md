@@ -18,7 +18,7 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 ### 🔧 Alternative Deployment Options
 - [Quay.io Images (quay-run.sh)](#alternative-quayio-images-quay-runsh)
 - [Podman Compose](#alternative-podman-compose)
-- [Docker Compose](#alternative-docker-compose)
+- [Podman Compose](#podman-compose)
 
 ### 📋 Features & Capabilities
 - [Features](#-features)
@@ -72,7 +72,7 @@ The easiest way to run this application is using containers. This approach requi
 
 ### Prerequisites
 
-- **Docker** OR **Podman** (choose one!)
+- **Podman** (required)
 - **OpenShift pull-secret.json** (required to connect to Red Hat registries)
 
 > **Note:** You must provide a valid `pull-secret.json` file (downloadable from https://console.redhat.com/openshift/downloads#tool-pull-secret) in order to mirror images from Red Hat registries.  This should be saved in the pull-secret directory.
@@ -103,10 +103,10 @@ cd oc-mirror-web-app
 > - This ensures you have access to the complete list of operators and their channels
 > - Subsequent runs can use `./container-run.sh` (without the flag) for faster startup
 
-The script automatically detects whether you have Docker or Podman and uses the appropriate one.
+The script automatically detects whether you have Podman and uses it.
 
 The script will:
-- ✅ Detect your container runtime (Docker or Podman)
+- ✅ Detect your container runtime (Podman)
 - ✅ Check container runtime availability
 - ✅ Create necessary data directories
 - ✅ Build the container image (includes oc and oc-mirror v2)
@@ -223,18 +223,7 @@ chmod +x podman-compose.sh
 ./podman-compose.sh status
 ```
 
-### Alternative: Docker Compose
 
-```bash
-# Start with docker-compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-```
 
 [⬆️ Back to Top](#-table-of-contents)
 
@@ -300,8 +289,7 @@ oc-mirror-web-app/
 ├── pull-secret/           # Pull secret storage
 ├── .github/               # GitHub workflows and templates
 ├── Dockerfile            # Container definition
-├── docker-compose.yml    # Multi-service setup
-├── container-run.sh      # Easy container runner (Docker/Podman)
+├── container-run.sh      # Easy container runner (Podman)
 ├── quay-run.sh           # Quay.io image runner
 ├── podman-compose.sh     # Podman-specific compose runner
 ├── build-for-quay/       # Build and deployment scripts
@@ -521,12 +509,10 @@ For issues and questions:
 ### Deployment Options
 - **Local Build**: `./container-run.sh` - Build and run locally
 - **Quay.io Images**: `./quay-run.sh` - Use pre-built images from Quay.io
-- **Docker Compose**: `docker-compose up -d` - Multi-service deployment
-- **Podman Compose**: `./podman-compose.sh` - Podman-specific compose
+- **Podman Compose**: `./podman-compose.sh` - Multi-service deployment
 
 ### Container Runtime Requirements
-- **Docker**: 20.10+ ✅ Supported
-- **Podman**: 4.0+ ✅ Supported
+- **Podman**: 4.0+ ✅ Required
 - **Node.js**: 18+ (included in container)
 
 ### Architecture Support

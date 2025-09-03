@@ -46,8 +46,7 @@ oc-mirror-web-app/
 ├── data/                  # Runtime data (created automatically)
 ├── package.json           # Dependencies and scripts
 ├── Dockerfile            # Container configuration
-├── docker-compose.yml    # Multi-service deployment
-├── container-run.sh      # Easy container runner (Docker/Podman)
+├── container-run.sh      # Easy container runner (Podman)
 ├── podman-compose.sh     # Podman-specific compose runner
 ├── README.md             # Comprehensive documentation
 ├── QUICKSTART.md         # Quick start guide
@@ -132,14 +131,11 @@ For complete API documentation, see [API.md](API.md).
 
 #### 1. Containerized Deployment (Recommended)
 ```bash
-# Automatic detection (Docker or Podman)
+# Automatic detection (Podman)
 ./container-run.sh
 
 # Podman Compose
 ./podman-compose.sh
-
-# Docker Compose
-docker-compose up -d
 ```
 
 #### 2. Manual Development Setup
@@ -184,7 +180,7 @@ npm run server
 - **File Permissions**: Proper file system permissions
 - **Input Validation**: YAML validation and sanitization
 - **Error Handling**: Comprehensive error handling and logging
-- **Non-root Execution**: Docker container runs as non-root user
+- **Non-root Execution**: Container runs as non-root user
 
 ### 📈 Monitoring & Observability
 
@@ -205,7 +201,7 @@ npm run server
 ## Usage Workflow
 
 ### 1. Initial Setup
-1. Ensure Docker or Podman is installed
+1. Ensure Podman is installed
 2. Run the containerized application: `./container-run.sh`
 3. Access the web interface at `http://localhost:3000`
 
