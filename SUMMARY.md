@@ -47,7 +47,6 @@ oc-mirror-web-app/
 ├── package.json           # Dependencies and scripts
 ├── Dockerfile            # Container configuration
 ├── container-run.sh      # Easy container runner (Podman)
-├── podman-compose.sh     # Podman-specific compose runner
 ├── README.md             # Comprehensive documentation
 ├── QUICKSTART.md         # Quick start guide
 └── SUMMARY.md            # This file
@@ -134,8 +133,6 @@ For complete API documentation, see [API.md](API.md).
 # Automatic detection (Podman)
 ./container-run.sh
 
-# Podman Compose
-./podman-compose.sh
 ```
 
 #### 2. Manual Development Setup

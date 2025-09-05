@@ -17,8 +17,6 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 
 ### 🔧 Alternative Deployment Options
 - [Quay.io Images (quay-run.sh)](#alternative-quayio-images-quay-runsh)
-- [Podman Compose](#alternative-podman-compose)
-- [Podman Compose](#podman-compose)
 
 ### 📋 Features & Capabilities
 - [Features](#-features)
@@ -202,26 +200,6 @@ chmod +x quay-run.sh
 ./quay-run.sh --restart
 ```
 
-### Alternative: Podman Compose
-
-If you prefer using compose with Podman:
-
-```bash
-# Make the script executable
-chmod +x podman-compose.sh
-
-# Start with podman-compose
-./podman-compose.sh
-
-# View logs
-./podman-compose.sh logs
-
-# Stop services
-./podman-compose.sh down
-
-# Show status
-./podman-compose.sh status
-```
 
 
 
@@ -291,7 +269,6 @@ oc-mirror-web-app/
 ├── Dockerfile            # Container definition
 ├── container-run.sh      # Easy container runner (Podman)
 ├── quay-run.sh           # Quay.io image runner
-├── podman-compose.sh     # Podman-specific compose runner
 ├── build-for-quay/       # Build and deployment scripts
 │   └── build-for-quay.sh # Quay.io build and push script
 ├── fetch-catalogs-host.sh # Catalog fetching script
@@ -509,7 +486,6 @@ For issues and questions:
 ### Deployment Options
 - **Local Build**: `./container-run.sh` - Build and run locally
 - **Quay.io Images**: `./quay-run.sh` - Use pre-built images from Quay.io
-- **Podman Compose**: `./podman-compose.sh` - Multi-service deployment
 
 ### Container Runtime Requirements
 - **Podman**: 4.0+ ✅ Required

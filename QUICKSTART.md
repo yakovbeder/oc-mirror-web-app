@@ -74,20 +74,6 @@ chmod +x quay-run.sh
 ./quay-run.sh --logs
 ```
 
-### Option 3: Podman Compose
-```bash
-# Make the script executable
-chmod +x podman-compose.sh
-
-# Start with podman-compose
-./podman-compose.sh
-
-# View logs
-./podman-compose.sh logs
-
-# Stop services
-./podman-compose.sh down
-```
 
 
 
