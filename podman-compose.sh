@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Podman Compose Runner for OC Mirror v2 Web Application
-# This script provides Podman-compatible alternatives to docker-compose
+# This script provides Podman-compose functionality
 
 set -e
 
@@ -50,12 +50,9 @@ check_podman_compose() {
     if command -v podman-compose &> /dev/null; then
         PODMAN_COMPOSE_CMD="podman-compose"
         print_success "Using podman-compose"
-    elif command -v docker-compose &> /dev/null; then
-        PODMAN_COMPOSE_CMD="docker-compose"
-        print_warning "Using docker-compose with Podman (may have limitations)"
     else
-        print_error "Neither podman-compose nor docker-compose is available."
-        print_error "Please install podman-compose or docker-compose."
+        print_error "podman-compose is not available."
+        print_error "Please install podman-compose."
         exit 1
     fi
 }
@@ -169,7 +166,7 @@ case "${1:-}" in
         echo "  $0 logs         # View logs"
         echo "  $0 status       # Show status"
         echo ""
-        echo "Note: This script works with both podman-compose and docker-compose"
+        echo "Note: This script requires podman-compose"
         exit 0
         ;;
     up|start)
