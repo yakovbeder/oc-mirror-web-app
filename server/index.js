@@ -1117,6 +1117,88 @@ app.post('/api/config/save', async (req, res) => {
   }
 });
 
+app.post('/api/config/upload', async (req, res) => {
+  try {
+    const { filename, content } = req.body;
+    
+    if (!filename || !content) {
+      return res.status(400).json({ error: 'Filename and content are required' });
+    }
+
+    // Validate that the content is valid YAML
+    try {
+      const parsed = YAML.parse(content);
+      
+      // Basic validation for ImageSetConfiguration
+      if (!parsed.kind || parsed.kind !== 'ImageSetConfiguration') {
+        return res.status(400).json({ error: 'Invalid YAML: Must be an ImageSetConfiguration' });
+      }
+
+      if (!parsed.apiVersion || !parsed.apiVersion.includes('mirror.openshift.io')) {
+        return res.status(400).json({ error: 'Invalid YAML: Must have mirror.openshift.io API version' });
+      }
+
+      if (!parsed.mirror) {
+        return res.status(400).json({ error: 'Invalid YAML: Missing mirror section' });
+      }
+    } catch (yamlError) {
+      return res.status(400).json({ error: `Invalid YAML: ${yamlError.message}` });
+    }
+
+    // Ensure filename has .yaml extension
+    const finalFilename = filename.endsWith('.yaml') || filename.endsWith('.yml') 
+      ? filename 
+      : `${filename}.yaml`;
+    
+    const filepath = path.join(CONFIGS_DIR, finalFilename);
+    
+    // Check if file already exists
+    try {
+      await fs.access(filepath);
+      return res.status(409).json({ error: 'Configuration file already exists' });
+    } catch (error) {
+      // File doesn't exist, which is what we want
+    }
+    
+    await fs.writeFile(filepath, content);
+    res.json({ message: 'Configuration uploaded successfully', filename: finalFilename });
+  } catch (error) {
+    console.error('Error uploading configuration:', error);
+    res.status(500).json({ error: 'Failed to upload configuration' });
+  }
+});
+
+app.delete('/api/config/delete/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    if (!filename) {
+      return res.status(400).json({ error: 'Filename is required' });
+    }
+
+    // Security check: ensure filename doesn't contain path traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const filepath = path.join(CONFIGS_DIR, filename);
+    
+    // Check if file exists
+    try {
+      await fs.access(filepath);
+    } catch (error) {
+      return res.status(404).json({ error: 'Configuration file not found' });
+    }
+    
+    // Delete the file
+    await fs.unlink(filepath);
+    res.json({ message: 'Configuration deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting configuration:', error);
+    res.status(500).json({ error: 'Failed to delete configuration' });
+  }
+});
+
 app.get('/api/channels', async (req, res) => {
   try {
     // This would typically query available OCP channels

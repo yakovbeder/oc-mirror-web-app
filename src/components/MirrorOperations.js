@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
+import YAML from 'yaml';
 
 const MirrorOperations = () => {
   const [operations, setOperations] = useState([]);
@@ -11,6 +12,22 @@ const MirrorOperations = () => {
   const [logStream, setLogStream] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  
+  // Upload functionality state
+  const [showUploadSection, setShowUploadSection] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedContent, setUploadedContent] = useState('');
+  const [parsedConfig, setParsedConfig] = useState(null);
+  const [uploadError, setUploadError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  
+  // Overwrite confirmation modal state
+  const [showOverwriteModal, setShowOverwriteModal] = useState(false);
+  const [conflictFilename, setConflictFilename] = useState('');
+  
+  // Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteFilename, setDeleteFilename] = useState('');
 
   useEffect(() => {
     fetchOperations();
@@ -147,6 +164,277 @@ const MirrorOperations = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Upload functionality
+  const openUploadSection = () => {
+    setShowUploadSection(true);
+    setUploadedFile(null);
+    setUploadedContent('');
+    setParsedConfig(null);
+    setUploadError('');
+
+    // Auto-scroll to the upload section
+    setTimeout(() => {
+      const uploadSection = document.getElementById('upload-section');
+      if (uploadSection) {
+        uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
+  const closeUploadSection = () => {
+    setShowUploadSection(false);
+    setUploadedFile(null);
+    setUploadedContent('');
+    setParsedConfig(null);
+    setUploadError('');
+  };
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      processUploadedFile(file);
+    }
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files[0];
+    if (file) {
+      processUploadedFile(file);
+    }
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+  };
+
+  const processUploadedFile = (file) => {
+    // Validate file type
+    if (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml')) {
+      setUploadError('Please upload a YAML file (.yaml or .yml)');
+      return;
+    }
+
+    setUploadedFile(file);
+    setUploadError('');
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      setUploadedContent(content);
+      parseYAMLContent(content);
+    };
+    reader.readAsText(file);
+  };
+
+  const parseYAMLContent = (content) => {
+    try {
+      const parsed = YAML.parse(content);
+      
+      // Validate that it's an ImageSetConfiguration
+      if (!parsed.kind || parsed.kind !== 'ImageSetConfiguration') {
+        setUploadError('Invalid YAML: Must be an ImageSetConfiguration');
+        setParsedConfig(null);
+        return;
+      }
+
+      if (!parsed.apiVersion || !parsed.apiVersion.includes('mirror.openshift.io')) {
+        setUploadError('Invalid YAML: Must have mirror.openshift.io API version');
+        setParsedConfig(null);
+        return;
+      }
+
+      if (!parsed.mirror) {
+        setUploadError('Invalid YAML: Missing mirror section');
+        setParsedConfig(null);
+        return;
+      }
+
+      setParsedConfig(parsed);
+      setUploadError('');
+    } catch (error) {
+      setUploadError(`Invalid YAML: ${error.message}`);
+      setParsedConfig(null);
+    }
+  };
+
+  const saveUploadedConfig = async () => {
+    if (!parsedConfig || !uploadedFile) {
+      toast.error('No valid configuration to save');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      
+      // Generate a filename based on the uploaded file or current timestamp
+      let filename = uploadedFile.name || `config-${Date.now()}.yaml`;
+      
+      // Ensure filename has .yaml extension
+      if (!filename.endsWith('.yaml') && !filename.endsWith('.yml')) {
+        filename = `${filename}.yaml`;
+      }
+      
+      // Try to save the configuration
+      try {
+        await axios.post('/api/config/upload', {
+          filename: filename,
+          content: uploadedContent
+        });
+      } catch (uploadError) {
+        // If file already exists (409), show custom modal
+        if (uploadError.response?.status === 409) {
+          setConflictFilename(filename);
+          setShowOverwriteModal(true);
+          setUploading(false);
+          return; // Exit early, will be handled by modal actions
+        } else {
+          throw uploadError;
+        }
+      }
+
+      toast.success('Configuration uploaded successfully!');
+      closeUploadSection();
+      
+      // Refresh the configurations list
+      fetchConfigurations();
+      
+      // Auto-select the newly uploaded config
+      setSelectedConfig(filename);
+      
+      // Auto-scroll back to Start Operation section
+      setTimeout(() => {
+        const startOperationSection = document.querySelector('.card h3');
+        if (startOperationSection && startOperationSection.textContent.includes('Start New Operation')) {
+          startOperationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+      
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Error saving configuration:', error);
+      toast.error('Failed to save configuration: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Overwrite modal actions
+  const handleOverwriteConfirm = async () => {
+    try {
+      setUploading(true);
+      setShowOverwriteModal(false);
+      
+      // Use the save endpoint which allows overwriting
+      await axios.post('/api/config/save', {
+        config: uploadedContent,
+        name: conflictFilename
+      });
+
+      toast.success('Configuration uploaded and overwritten successfully!');
+      closeUploadSection();
+      
+      // Refresh the configurations list
+      fetchConfigurations();
+      
+      // Auto-select the newly uploaded config
+      setSelectedConfig(conflictFilename);
+      
+      // Auto-scroll back to Start Operation section
+      setTimeout(() => {
+        const startOperationSection = document.querySelector('.card h3');
+        if (startOperationSection && startOperationSection.textContent.includes('Start New Operation')) {
+          startOperationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+      
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Error saving configuration:', error);
+      toast.error('Failed to save configuration: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleAutoRename = async () => {
+    try {
+      setUploading(true);
+      setShowOverwriteModal(false);
+      
+      // Generate a unique filename
+      const timestamp = Date.now();
+      const nameWithoutExt = conflictFilename.replace(/\.(yaml|yml)$/, '');
+      const newFilename = `${nameWithoutExt}-${timestamp}.yaml`;
+      
+      await axios.post('/api/config/upload', {
+        filename: newFilename,
+        content: uploadedContent
+      });
+
+      toast.success(`Configuration uploaded as "${newFilename}"!`);
+      closeUploadSection();
+      
+      // Refresh the configurations list
+      fetchConfigurations();
+      
+      // Auto-select the newly uploaded config
+      setSelectedConfig(newFilename);
+      
+      // Auto-scroll back to Start Operation section
+      setTimeout(() => {
+        const startOperationSection = document.querySelector('.card h3');
+        if (startOperationSection && startOperationSection.textContent.includes('Start New Operation')) {
+          startOperationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+      
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Error saving configuration:', error);
+      toast.error('Failed to save configuration: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleOverwriteCancel = () => {
+    setShowOverwriteModal(false);
+    setUploading(false);
+    // Don't close the upload modal, let user try again
+  };
+
+  // Delete configuration function
+  const deleteConfiguration = (configName) => {
+    setDeleteFilename(configName);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await axios.delete(`/api/config/delete/${encodeURIComponent(deleteFilename)}`);
+      toast.success(`Configuration "${deleteFilename}" deleted successfully!`);
+      fetchConfigurations();
+      
+      // If the deleted config was selected, clear the selection
+      if (selectedConfig === deleteFilename) {
+        setSelectedConfig('');
+      }
+      
+      setShowDeleteModal(false);
+      setDeleteFilename('');
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Error deleting configuration:', error);
+      toast.error('Failed to delete configuration: ' + (error.response?.data?.message || error.message));
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setDeleteFilename('');
   };
 
   const stopOperation = async (operationId) => {
@@ -446,12 +734,19 @@ const MirrorOperations = () => {
       <div className="card">
         <h3>🚀 Start New Operation</h3>
         <div className="grid">
-          <div className="form-group">
-            <label>Configuration File</label>
-            <select 
+        <div className="form-group">
+          <label>Configuration File</label>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr auto auto auto', 
+            gap: '0.75rem', 
+            alignItems: 'center' 
+          }}>
+            <select
               className="form-control"
               value={selectedConfig}
               onChange={(e) => setSelectedConfig(e.target.value)}
+              style={{ minWidth: '200px' }}
             >
               <option value="">Select a configuration file...</option>
               {availableConfigs.map(config => (
@@ -460,18 +755,45 @@ const MirrorOperations = () => {
                 </option>
               ))}
             </select>
-          </div>
-          
-          <div className="form-group">
-            <label>&nbsp;</label>
+            <button
+              className="btn btn-secondary"
+              onClick={openUploadSection}
+              style={{ 
+                whiteSpace: 'nowrap',
+                minWidth: '140px',
+                padding: '0.5rem 1rem'
+              }}
+            >
+              📤 Upload YAML
+            </button>
+            {selectedConfig && (
+              <button
+                className="btn btn-danger"
+                onClick={() => deleteConfiguration(selectedConfig)}
+                style={{ 
+                  whiteSpace: 'nowrap',
+                  minWidth: '100px',
+                  padding: '0.5rem 1rem'
+                }}
+                title={`Delete ${selectedConfig}`}
+              >
+                🗑️ Delete
+              </button>
+            )}
             <button 
               className="btn btn-primary" 
               onClick={startOperation}
-              disabled={loading || !selectedConfig || runningOperation}
+              disabled={!selectedConfig || loading}
+              style={{ 
+                whiteSpace: 'nowrap',
+                minWidth: '140px',
+                padding: '0.5rem 1rem'
+              }}
             >
               {loading ? <div className="loading"></div> : '▶️ Start Operation'}
             </button>
           </div>
+        </div>
         </div>
         
         {runningOperation && (
@@ -640,6 +962,232 @@ const MirrorOperations = () => {
           </div>
         </div>
       </div>
+
+      {/* Upload Section */}
+      {showUploadSection && (
+        <div id="upload-section" className="card" style={{ marginTop: '1rem', border: '2px solid #007bff', backgroundColor: '#f8f9ff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ margin: 0, color: '#007bff' }}>📤 Upload YAML Configuration</h3>
+            <button 
+              className="btn btn-sm btn-outline-secondary" 
+              onClick={closeUploadSection}
+              style={{ padding: '0.25rem 0.5rem' }}
+            >
+              ✕ Close
+            </button>
+          </div>
+          
+          <div className="grid" style={{ gap: '1rem' }}>
+            <div className="form-group">
+              <label>Upload YAML File</label>
+              <div
+                className="upload-area"
+                onClick={() => document.getElementById('file-input').click()}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                style={{
+                  border: '2px dashed #007bff',
+                  borderRadius: '8px',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  backgroundColor: uploadedFile ? '#e8f5e8' : '#f8f9ff',
+                  transition: 'all 0.3s ease',
+                  minHeight: '120px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+              >
+                {uploadedFile ? (
+                  <div>
+                    <div style={{ color: '#28a745', fontSize: '1.2rem', marginBottom: '0.5rem' }}>
+                      ✅ {uploadedFile.name}
+                    </div>
+                    <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                      Click to change file
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📁</div>
+                    <div style={{ color: '#007bff', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Drag & drop YAML file here
+                    </div>
+                    <div style={{ color: '#6c757d', fontSize: '0.9rem' }}>
+                      or click to browse
+                    </div>
+                  </div>
+                )}
+              </div>
+              <input
+                id="file-input"
+                type="file"
+                accept=".yaml,.yml"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+            </div>
+
+            {uploadError && (
+              <div className="alert alert-danger">
+                ❌ {uploadError}
+              </div>
+            )}
+
+            {parsedConfig && (
+              <div className="alert alert-success">
+                ✅ Valid ImageSetConfiguration detected
+                <div style={{ marginTop: '0.5rem', fontSize: '0.9em' }}>
+                  <strong>Kind:</strong> {parsedConfig.kind}<br/>
+                  <strong>API Version:</strong> {parsedConfig.apiVersion}<br/>
+                  {parsedConfig.mirror?.platform?.channels && (
+                    <><strong>Platform Channels:</strong> {parsedConfig.mirror.platform.channels.length}<br/></>
+                  )}
+                  {parsedConfig.mirror?.operators && (
+                    <><strong>Operators:</strong> {parsedConfig.mirror.operators.length}<br/></>
+                  )}
+                  {parsedConfig.mirror?.additionalImages && (
+                    <><strong>Additional Images:</strong> {parsedConfig.mirror.additionalImages.length}</>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {uploadedContent && (
+              <div className="form-group">
+                <label>YAML Preview</label>
+                <div style={{ 
+                  backgroundColor: '#f8f9fa', 
+                  padding: '1rem', 
+                  borderRadius: '4px', 
+                  border: '1px solid #dee2e6',
+                  fontSize: '0.875rem',
+                  maxHeight: '300px',
+                  overflow: 'auto'
+                }}>
+                  <pre style={{ 
+                    margin: 0, 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace'
+                  }}>
+                    {uploadedContent}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-start', marginTop: '1rem' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={closeUploadSection}
+                disabled={uploading}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={saveUploadedConfig}
+                disabled={!parsedConfig || uploading}
+              >
+                {uploading ? <div className="loading"></div> : '💾 Save Configuration'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overwrite Confirmation Modal */}
+      {showOverwriteModal && (
+        <div className="modal-overlay" onClick={handleOverwriteCancel} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', maxWidth: '480px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', border: '1px solid #e0e0e0' }}>
+            <div className="modal-header" style={{ padding: '1.5rem 1.5rem 0 1.5rem', borderBottom: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ fontSize: '1.5rem' }}>⚠️</div>
+                <h3 style={{ margin: 0, color: '#dc3545', fontSize: '1.25rem' }}>File Already Exists</h3>
+              </div>
+            </div>
+            
+            <div className="modal-body" style={{ padding: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem', color: '#495057' }}>
+                Configuration file <strong style={{ color: '#007bff' }}>"{conflictFilename}"</strong> already exists.
+              </p>
+              <p style={{ marginBottom: '0', color: '#6c757d', fontSize: '0.95rem' }}>
+                Choose how you want to save this configuration:
+              </p>
+            </div>
+            
+            <div className="modal-footer" style={{ padding: '0 1.5rem 1.5rem 1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-start' }}>
+              <button 
+                className="btn btn-outline-secondary" 
+                onClick={handleOverwriteCancel}
+                disabled={uploading}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-warning" 
+                onClick={handleAutoRename}
+                disabled={uploading}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                {uploading ? <div className="loading"></div> : '🔄 Auto-Generate Name'}
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={handleOverwriteConfirm}
+                disabled={uploading}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                {uploading ? <div className="loading"></div> : '⚠️ Overwrite'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={cancelDelete} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', maxWidth: '450px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', border: '1px solid #e0e0e0' }}>
+            <div className="modal-header" style={{ padding: '1.5rem 1.5rem 0 1.5rem', borderBottom: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ fontSize: '1.5rem' }}>🗑️</div>
+                <h3 style={{ margin: 0, color: '#dc3545', fontSize: '1.25rem' }}>Delete Configuration</h3>
+              </div>
+            </div>
+            
+            <div className="modal-body" style={{ padding: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem', color: '#495057' }}>
+                Are you sure you want to delete configuration <strong style={{ color: '#007bff' }}>"{deleteFilename}"</strong>?
+              </p>
+              <p style={{ marginBottom: '0', color: '#dc3545', fontSize: '0.95rem', fontWeight: '500' }}>
+                ⚠️ This action cannot be undone.
+              </p>
+            </div>
+            
+            <div className="modal-footer" style={{ padding: '0 1.5rem 1.5rem 1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-start' }}>
+              <button 
+                className="btn btn-outline-secondary" 
+                onClick={cancelDelete}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={confirmDelete}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                🗑️ Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
