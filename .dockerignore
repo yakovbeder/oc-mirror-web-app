@@ -17,4 +17,11 @@ debug-output.log
 
 # Exclude temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Exclude cache directories (will be created at runtime)
+data/cache/
+
+# Exclude runtime data directories (will be created at runtime)
+data/logs/
+data/operations/

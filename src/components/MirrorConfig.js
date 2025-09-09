@@ -547,10 +547,14 @@ const MirrorConfig = () => {
       kind: 'ImageSetConfiguration',
       apiVersion: 'mirror.openshift.io/v2alpha1',
       mirror: {
-        operators: [],
-        additionalImages: config.mirror.additionalImages
+        operators: []
       }
     };
+
+    // Only add additionalImages if it has content
+    if (config.mirror.additionalImages && config.mirror.additionalImages.length > 0) {
+      cleanConfig.mirror.additionalImages = config.mirror.additionalImages;
+    }
 
     // Only add platform section if channels exist
     if (config.mirror.platform.channels && config.mirror.platform.channels.length > 0) {
