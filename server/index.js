@@ -1285,34 +1285,55 @@ function extractVersionInfo(channelNames, operatorName) {
   channelNames.forEach(channel => {
     if (!channel || !channel.trim()) return;
     
-    // Extract version from operator-specific channels like "rhbk-operator.v26.2.4-opr.1"
-    // or "accuknox-operator.v0.2.1" (where operator name might be different)
-    if (operatorName && channel.includes('.v')) {
-      // Try exact operator name match first
-      if (channel.includes(`${operatorName}.`)) {
-        const versionMatch = channel.match(/\.v(.+)/);
-        if (versionMatch) {
-          versions.add(versionMatch[1]);
-        }
+    // Extract version from operator-specific channels
+    if (operatorName && channel.includes(`${operatorName}.`)) {
+      // Pattern 1: operator.vX.Y.Z (e.g., "rhbk-operator.v26.2.4-opr.1")
+      const versionWithV = channel.match(new RegExp(`${operatorName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.v(.+)`));
+      if (versionWithV) {
+        versions.add(versionWithV[1]);
         return;
       }
       
-      // Try partial operator name match (for cases like accuknox-operator-certified vs accuknox-operator)
+      // Pattern 2: operator.X.Y.Z (e.g., "rhsso-operator.7.5.0", "kubernetes-nmstate-operator.4.19.0-202506020913")
+      const versionWithoutV = channel.match(new RegExp(`${operatorName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(.+)`));
+      if (versionWithoutV) {
+        versions.add(versionWithoutV[1]);
+        return;
+      }
+    }
+    
+    // Try partial operator name match (for cases like accuknox-operator-certified vs accuknox-operator)
+    if (operatorName) {
       const operatorBase = operatorName.replace(/-certified$/, '').replace(/-community$/, '');
-      if (channel.includes(`${operatorBase}.`)) {
-        const versionMatch = channel.match(/\.v(.+)/);
-        if (versionMatch) {
-          versions.add(versionMatch[1]);
+      if (operatorBase !== operatorName && channel.includes(`${operatorBase}.`)) {
+        // Pattern 1: operator.vX.Y.Z
+        const versionWithV = channel.match(new RegExp(`${operatorBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.v(.+)`));
+        if (versionWithV) {
+          versions.add(versionWithV[1]);
+          return;
         }
-        return;
+        
+        // Pattern 2: operator.X.Y.Z
+        const versionWithoutV = channel.match(new RegExp(`${operatorBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(.+)`));
+        if (versionWithoutV) {
+          versions.add(versionWithoutV[1]);
+          return;
+        }
       }
-      
-      // Try generic version extraction for any operator.v pattern
-      const genericVersionMatch = channel.match(/^[^.]+\.v(.+)/);
-      if (genericVersionMatch) {
-        versions.add(genericVersionMatch[1]);
-        return;
-      }
+    }
+    
+    // Try generic version extraction for any operator.v pattern
+    const genericVersionWithV = channel.match(/^[^.]+\.v(.+)/);
+    if (genericVersionWithV) {
+      versions.add(genericVersionWithV[1]);
+      return;
+    }
+    
+    // Try generic version extraction for any operator.X.Y.Z pattern
+    const genericVersionWithoutV = channel.match(/^[^.]+\.(\d+\.\d+\.\d+.*)/);
+    if (genericVersionWithoutV) {
+      versions.add(genericVersionWithoutV[1]);
+      return;
     }
     
     // Extract version from version-specific channels like "v26.2.4"
@@ -1326,9 +1347,37 @@ function extractVersionInfo(channelNames, operatorName) {
     genericChannels.push(channel);
   });
   
+  // Sort versions semantically (handle complex version strings)
+  const sortedVersions = Array.from(versions).sort((a, b) => {
+    // Extract the base version (X.Y.Z) from complex version strings
+    const getBaseVersion = (version) => {
+      const match = version.match(/^(\d+\.\d+\.\d+)/);
+      return match ? match[1] : version;
+    };
+    
+    const baseA = getBaseVersion(a);
+    const baseB = getBaseVersion(b);
+    
+    // Compare base versions semantically
+    const partsA = baseA.split('.').map(Number);
+    const partsB = baseB.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+      const partA = partsA[i] || 0;
+      const partB = partsB[i] || 0;
+      
+      if (partA !== partB) {
+        return partA - partB;
+      }
+    }
+    
+    // If base versions are equal, sort by full string (for build metadata)
+    return a.localeCompare(b);
+  });
+  
   return {
     genericChannels,
-    versions: Array.from(versions).sort()
+    versions: sortedVersions
   };
 }
 
@@ -1394,18 +1443,20 @@ app.get('/api/operators/:operator/versions', async (req, res) => {
         if (operators) {
           const operatorData = operators.find(op => op.name === operator);
           if (operatorData) {
-            // Split the raw channel string into individual channels first
+            // Handle channels - they can be either an array of individual channel names or a string that needs splitting
             let channelNames = [];
             if (operatorData.channels && operatorData.channels.length > 0) {
-              const rawChannels = operatorData.channels[0];
-              if (typeof rawChannels === 'string') {
-                if (rawChannels.includes('\n')) {
-                  channelNames = rawChannels.split('\n').filter(line => line.trim()).map(channel => channel.trim());
-                } else if (rawChannels.includes(' ')) {
-                  channelNames = rawChannels.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
-                } else {
-                  channelNames = [rawChannels];
+              const firstChannel = operatorData.channels[0];
+              if (typeof firstChannel === 'string' && (firstChannel.includes(' ') || firstChannel.includes('\n'))) {
+                // Legacy format: channels stored as space-separated string in first element
+                if (firstChannel.includes('\n')) {
+                  channelNames = firstChannel.split('\n').filter(line => line.trim()).map(channel => channel.trim());
+                } else if (firstChannel.includes(' ')) {
+                  channelNames = firstChannel.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
                 }
+              } else {
+                // New format: channels already stored as array of individual channel names
+                channelNames = operatorData.channels.filter(channel => channel && channel.trim());
               }
             }
             
@@ -1418,18 +1469,20 @@ app.get('/api/operators/:operator/versions', async (req, res) => {
         for (const [key, operators] of Object.entries(catalogData.operators)) {
           const operatorData = operators.find(op => op.name === operator);
           if (operatorData) {
-            // Split the raw channel string into individual channels first
+            // Handle channels - they can be either an array of individual channel names or a string that needs splitting
             let channelNames = [];
             if (operatorData.channels && operatorData.channels.length > 0) {
-              const rawChannels = operatorData.channels[0];
-              if (typeof rawChannels === 'string') {
-                if (rawChannels.includes('\n')) {
-                  channelNames = rawChannels.split('\n').filter(line => line.trim()).map(channel => channel.trim());
-                } else if (rawChannels.includes(' ')) {
-                  channelNames = rawChannels.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
-                } else {
-                  channelNames = [rawChannels];
+              const firstChannel = operatorData.channels[0];
+              if (typeof firstChannel === 'string' && (firstChannel.includes(' ') || firstChannel.includes('\n'))) {
+                // Legacy format: channels stored as space-separated string in first element
+                if (firstChannel.includes('\n')) {
+                  channelNames = firstChannel.split('\n').filter(line => line.trim()).map(channel => channel.trim());
+                } else if (firstChannel.includes(' ')) {
+                  channelNames = firstChannel.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
                 }
+              } else {
+                // New format: channels already stored as array of individual channel names
+                channelNames = operatorData.channels.filter(channel => channel && channel.trim());
               }
             }
             

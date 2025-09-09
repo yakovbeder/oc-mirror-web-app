@@ -155,10 +155,11 @@ process_catalog_data() {
             if [ -f "$catalog_json" ]; then
                 json_file="$catalog_json"
                 # Handle catalog.json with multiple JSON objects (using -cs for compact and slurp)
-                operator_name=$(jq -cs -r '.[0] | .name // empty' "$json_file" 2>/dev/null)
-                default_channel=$(jq -cs -r '.[0] | .defaultChannel // empty' "$json_file" 2>/dev/null)
+                # Get operator name and default channel from olm.package object
+                operator_name=$(jq -cs -r '.[] | select(.schema == "olm.package") | .name // empty' "$json_file" 2>/dev/null)
+                default_channel=$(jq -cs -r '.[] | select(.schema == "olm.package") | .defaultChannel // empty' "$json_file" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channels using the pattern from user's example
+                    # Extract all channels using the pattern from backup (get all names, filter out operator name)
                     # Look for entries that are channels (not the operator name itself)
                     channels=$(jq -cs -r '.[] | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | grep -v "^${operator_name}$" | sort -u | tr '\n' ' ' | sed 's/ $//')
                     
@@ -170,10 +171,11 @@ process_catalog_data() {
             elif [ -f "$index_json" ]; then
                 json_file="$index_json"
                 # Handle index.json with multiple JSON objects (same as catalog.json)
-                operator_name=$(jq -cs -r '.[0] | .name // empty' "$json_file" 2>/dev/null)
-                default_channel=$(jq -cs -r '.[0] | .defaultChannel // empty' "$json_file" 2>/dev/null)
+                # Get operator name and default channel from olm.package object
+                operator_name=$(jq -cs -r '.[] | select(.schema == "olm.package") | .name // empty' "$json_file" 2>/dev/null)
+                default_channel=$(jq -cs -r '.[] | select(.schema == "olm.package") | .defaultChannel // empty' "$json_file" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channels using the pattern from user's example
+                    # Extract all channels using the pattern from backup (get all names, filter out operator name)
                     # Look for entries that are channels (not the operator name itself)
                     channels=$(jq -cs -r '.[] | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | grep -v "^${operator_name}$" | sort -u | tr '\n' ' ' | sed 's/ $//')
                     
@@ -213,8 +215,25 @@ process_catalog_data() {
                 operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
                 default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channel names from channel files in channels/ directory
-                    channels=$(find "${operator_dir}/channels" -name "channel-*.json" -exec basename {} \; | sed 's/channel-\(.*\)\.json/\1/' | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    # Extract channel names and bundle names from channel files in channels/ directory
+                    local channel_names=""
+                    local bundle_names=""
+                    
+                    # Get channel names from filenames
+                    channel_names=$(find "${operator_dir}/channels" -name "channel-*.json" -exec basename {} \; | sed 's/channel-\(.*\)\.json/\1/' | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    
+                    # Get bundle names from entries in each channel file
+                    for channel_file in "${operator_dir}/channels"/channel-*.json; do
+                        if [ -f "$channel_file" ]; then
+                            local entries=$(jq -r '.entries[].name // empty' "$channel_file" 2>/dev/null | grep -v "^$")
+                            if [ -n "$entries" ]; then
+                                bundle_names="${bundle_names}${entries}"$'\n'
+                            fi
+                        fi
+                    done
+                    
+                    # Combine channel names and bundle names, remove duplicates
+                    channels=$(echo "${channel_names} ${bundle_names}" | tr '\n' ' ' | tr -s ' ' | sed 's/^ *//;s/ *$//')
                 fi
             elif [ -f "$package_json" ]; then
                 # Handle package.json only (fallback)
@@ -239,7 +258,7 @@ process_catalog_data() {
                    -n '{
                      name: $name,
                      defaultChannel: $defaultChannel,
-                     channels: [$channels],
+                     channels: ($channels | split(" ") | map(select(. != ""))),
                      catalog: $catalog,
                      ocpVersion: $ocpVersion,
                      catalogUrl: $catalogUrl
