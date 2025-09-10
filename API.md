@@ -32,6 +32,45 @@ Error responses follow this format:
 }
 ```
 
+## Validation Features
+
+The application includes comprehensive validation for configuration parameters:
+
+### Version Range Validation
+- **Platform Channels**: Validates that min/max versions are compatible with the selected channel
+- **Operator Channels**: Validates version ranges against available operator versions
+- **Auto-correction**: Automatically fixes invalid ranges (min > max scenarios)
+- **Channel Compatibility**: Ensures versions match channel major.minor versions (e.g., `stable-4.19` requires `4.19.x` versions)
+
+### Validation Triggers
+- **Platform Channels**: Validation triggers on `onBlur` events (when user finishes typing)
+- **Operator Channels**: Validation triggers after dropdown selection
+- **Real-time Feedback**: Toast notifications provide immediate validation feedback
+
+### Validation Examples
+```json
+// Valid configuration for stable-4.19 channel
+{
+  "channel": "stable-4.19",
+  "minVersion": "4.19.1",
+  "maxVersion": "4.19.9"
+}
+
+// Invalid configuration - version mismatch
+{
+  "channel": "stable-4.19", 
+  "minVersion": "4.18.1",  // ❌ Wrong major.minor version
+  "maxVersion": "4.19.9"
+}
+
+// Invalid configuration - min > max
+{
+  "channel": "stable-4.19",
+  "minVersion": "4.19.9",  // ❌ Greater than max
+  "maxVersion": "4.19.1"   // ❌ Less than min
+}
+```
+
 ## Endpoints
 
 ### System Information

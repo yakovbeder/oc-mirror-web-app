@@ -95,9 +95,52 @@ The containerized version includes:
 - ✅ **Health monitoring**
 - ✅ **Multi-architecture support** (AMD64, ARM64)
 - ✅ **Pre-fetched operator catalogs** (fast access to operator data)
+- ✅ **Smart version validation** (real-time validation for version ranges)
+- ✅ **Channel compatibility checking** (ensures versions match channel versions)
+- ✅ **Auto-correction features** (automatically fixes invalid configurations)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
 - ✅ **Version 3.1.5 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling)
+
+## 🎯 Smart Validation Features
+
+The application includes advanced validation to help you create correct configurations:
+
+### Version Range Validation
+- **Channel Compatibility**: Ensures version ranges match the selected channel (e.g., `stable-4.19` requires `4.19.x` versions)
+- **Range Validation**: Validates that min version ≤ max version
+- **Auto-correction**: Automatically fixes invalid ranges by swapping min/max values
+- **Real-time Feedback**: Toast notifications provide immediate validation feedback
+
+### Validation Examples
+```yaml
+# ✅ Valid configuration for stable-4.19 channel
+platform:
+  channels:
+  - name: stable-4.19
+    minVersion: 4.19.1
+    maxVersion: 4.19.9
+
+# ❌ Invalid - version mismatch (will show warning)
+platform:
+  channels:
+  - name: stable-4.19
+    minVersion: 4.18.1  # Wrong major.minor version
+    maxVersion: 4.19.9
+
+# ❌ Invalid - min > max (will auto-correct)
+platform:
+  channels:
+  - name: stable-4.19
+    minVersion: 4.19.9  # Greater than max
+    maxVersion: 4.19.1  # Less than min
+```
+
+### How Validation Works
+- **Platform Channels**: Validation triggers when you finish typing (onBlur)
+- **Operator Channels**: Validation triggers after selecting from dropdown
+- **Non-intrusive**: No interference while typing version numbers
+- **Helpful Messages**: Clear warnings with examples and suggestions
 
 ## 🔧 Container Management
 
