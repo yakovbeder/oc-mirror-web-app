@@ -1,6 +1,6 @@
 # Quick Start Guide - OC Mirror v2 Web Application
 
-**Current Version: v3.1.4**
+**Current Version: v3.1.5**
 
 ## 🚀 Containerized Deployment (Recommended)
 
@@ -111,7 +111,7 @@ The containerized version includes:
 - ✅ **Pre-fetched operator catalogs** (fast access to operator data)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
-- ✅ **Version 3.1.4 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling)
+- ✅ **Version 3.1.5 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling)
 
 ## 🔧 Container Management
 
