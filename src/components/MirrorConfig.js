@@ -235,18 +235,95 @@ const MirrorConfig = () => {
   };
 
   const updatePlatformChannel = (index, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      mirror: {
-        ...prev.mirror,
-        platform: {
-          ...prev.mirror.platform,
-          channels: prev.mirror.platform.channels.map((channel, i) => 
-            i === index ? { ...channel, [field]: value } : channel
-          )
+    setConfig(prev => {
+      const newConfig = {
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          platform: {
+            ...prev.mirror.platform,
+            channels: prev.mirror.platform.channels.map((channel, i) => 
+              i === index ? { ...channel, [field]: value } : channel
+            )
+          }
+        }
+      };
+
+      return newConfig;
+    });
+  };
+
+  const validatePlatformChannel = (index) => {
+    const channel = config.mirror.platform.channels[index];
+    
+    if (!channel.minVersion || !channel.maxVersion) return;
+    
+    // For platform channels, validate only when both versions are complete
+    const isValidVersion = (version) => {
+      if (!version) return false;
+      const parts = version.split('.');
+      return parts.length >= 2 && parts.every(part => !isNaN(parseInt(part)));
+    };
+    
+    if (isValidVersion(channel.minVersion) && isValidVersion(channel.maxVersion)) {
+      // Extract channel version (e.g., "stable-4.19" -> "4.19")
+      const channelVersionMatch = channel.name.match(/(\d+\.\d+)/);
+      if (channelVersionMatch) {
+        const channelVersion = channelVersionMatch[1]; // e.g., "4.19"
+        
+        // Check if min/max versions match the channel version
+        const getVersionMajorMinor = (version) => {
+          const parts = version.split('.');
+          return `${parts[0]}.${parts[1]}`;
+        };
+        
+        const minVersionMajorMinor = getVersionMajorMinor(channel.minVersion);
+        const maxVersionMajorMinor = getVersionMajorMinor(channel.maxVersion);
+        
+        if (minVersionMajorMinor !== channelVersion || maxVersionMajorMinor !== channelVersion) {
+          toast.warning(`Platform Channel Warning: Versions must match channel ${channelVersion}.x (e.g., ${channelVersion}.0)`, {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+          return; // Don't proceed with range validation if versions don't match channel
         }
       }
-    }));
+      
+      const versionToNumber = (version) => {
+        const parts = version.split('.').map(Number);
+        return parts[0] * 1000000 + parts[1] * 1000 + (parts[2] || 0);
+      };
+      
+      const minNum = versionToNumber(channel.minVersion);
+      const maxNum = versionToNumber(channel.maxVersion);
+      
+      if (minNum > maxNum) {
+        // Auto-correct by swapping the values
+        setConfig(prev => {
+          const newConfig = { ...prev };
+          const correctedChannel = { ...channel };
+          correctedChannel.maxVersion = channel.minVersion;
+          correctedChannel.minVersion = channel.maxVersion;
+          
+          newConfig.mirror.platform.channels[index] = correctedChannel;
+          
+          toast.info(`Platform Channel: Auto-corrected invalid version range`, {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+          
+          return newConfig;
+        });
+      }
+    }
   };
 
   const addOperator = async () => {
@@ -403,29 +480,94 @@ const MirrorConfig = () => {
   };
 
   const updateOperatorPackageChannelVersion = (operatorIndex, packageIndex, channelIndex, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      mirror: {
-        ...prev.mirror,
-        operators: prev.mirror.operators.map((op, i) => 
-          i === operatorIndex 
-            ? { 
-                ...op, 
-                packages: op.packages.map((pkg, pIndex) => 
-                  pIndex === packageIndex 
-                    ? { 
-                        ...pkg, 
-                        channels: (pkg.channels || []).map((channel, cIndex) => 
-                          cIndex === channelIndex ? { ...channel, [field]: value } : channel
-                        )
-                      } 
-                    : pkg
-                )
-              }
-            : op
-        )
+    setConfig(prev => {
+      const newConfig = {
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          operators: prev.mirror.operators.map((op, i) => 
+            i === operatorIndex 
+              ? { 
+                  ...op, 
+                  packages: op.packages.map((pkg, pIndex) => 
+                    pIndex === packageIndex 
+                      ? { 
+                          ...pkg, 
+                          channels: (pkg.channels || []).map((channel, cIndex) => 
+                            cIndex === channelIndex ? { ...channel, [field]: value } : channel
+                          )
+                        } 
+                      : pkg
+                  )
+                }
+              : op
+          )
+        }
+      };
+
+      return newConfig;
+    });
+    
+    // Validate after state update (using setTimeout to ensure state is updated)
+    setTimeout(() => {
+      validateOperatorChannel(operatorIndex, packageIndex, channelIndex);
+    }, 0);
+  };
+
+  const validateOperatorChannel = (operatorIndex, packageIndex, channelIndex) => {
+    const operator = config.mirror.operators[operatorIndex];
+    const pkg = operator.packages[packageIndex];
+    const channel = pkg.channels[channelIndex];
+    
+    if (!channel.minVersion || !channel.maxVersion) return;
+    
+    // Only validate when both versions are complete
+    const isValidVersion = (version) => {
+      if (!version) return false;
+      const parts = version.split('.');
+      return parts.length >= 2 && parts.every(part => !isNaN(parseInt(part)));
+    };
+    
+    if (isValidVersion(channel.minVersion) && isValidVersion(channel.maxVersion)) {
+      const availableVersions = getChannelVersions(operatorIndex, packageIndex, channel.name);
+      const validation = validateVersionRange(channel.minVersion, channel.maxVersion, availableVersions);
+      
+      if (!validation.isValid) {
+        // Check if it's a simple min > max issue that we can auto-correct
+        if (validation.message.includes('Min version cannot be greater than max version')) {
+          // Auto-correct by swapping the values
+          setConfig(prev => {
+            const newConfig = { ...prev };
+            const correctedChannel = { ...channel };
+            correctedChannel.maxVersion = channel.minVersion;
+            correctedChannel.minVersion = channel.maxVersion;
+            
+            newConfig.mirror.operators[operatorIndex].packages[packageIndex].channels[channelIndex] = correctedChannel;
+            
+            toast.info(`Operator Channel: Auto-corrected invalid version range`, {
+              position: "top-right",
+              autoClose: 3000,
+              hideProgressBar: false,
+              closeOnClick: true,
+              pauseOnHover: true,
+              draggable: true,
+            });
+            
+            return newConfig;
+          });
+        } else {
+          // Show validation warning for other issues (like no available versions)
+          toast.warning(`Version Range Warning: ${validation.message}`, {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+        }
       }
-    }));
+    }
   };
 
   const addAdditionalImage = () => {
@@ -752,6 +894,7 @@ const MirrorConfig = () => {
                     className="form-control"
                     value={channel.minVersion}
                     onChange={(e) => updatePlatformChannel(index, 'minVersion', e.target.value)}
+                    onBlur={() => validatePlatformChannel(index)}
                     placeholder="e.g., 4.16.0"
                   />
                 </div>
@@ -763,6 +906,7 @@ const MirrorConfig = () => {
                     className="form-control"
                     value={channel.maxVersion}
                     onChange={(e) => updatePlatformChannel(index, 'maxVersion', e.target.value)}
+                    onBlur={() => validatePlatformChannel(index)}
                     placeholder="e.g., 4.16.10"
                   />
                 </div>

@@ -213,6 +213,9 @@ chmod +x quay-run.sh
 - **Configuration Management**: Create, edit, and manage mirror configurations
 - **YAML Upload & Import**: Upload existing ImageSetConfiguration YAML files with validation and conflict resolution
 - **Configuration Deletion**: Delete unwanted configuration files with confirmation dialogs
+- **Smart Version Validation**: Real-time validation for platform and operator channel version ranges
+- **Channel Compatibility Checking**: Ensures version ranges match selected channel versions
+- **Auto-correction**: Automatically fixes invalid version ranges (min > max scenarios)
 - **Operation Execution**: Run mirror operations with real-time monitoring
 - **History Tracking**: View and analyze past operations
 - **Log Management**: Centralized logging with search and filtering
@@ -225,6 +228,10 @@ chmod +x quay-run.sh
 - **Real-time Updates**: Live status updates during operations
 - **File Management**: Upload, download, and manage configuration files
 - **YAML Validation**: Comprehensive validation of uploaded ImageSetConfiguration files
+- **Version Range Validation**: Smart validation for platform and operator channel version ranges
+- **Channel Compatibility Validation**: Ensures version ranges match channel major.minor versions
+- **Auto-correction Logic**: Automatically fixes invalid version ranges with user-friendly notifications
+- **onBlur Validation**: Non-intrusive validation that doesn't interfere with typing
 - **Conflict Resolution**: Smart handling of file conflicts with auto-rename and overwrite options
 - **Error Handling**: Comprehensive error reporting and recovery
 - **Responsive Design**: Works on desktop and mobile devices
@@ -368,6 +375,10 @@ mirror:
 - Visual configuration builder
 - Template-based creation
 - Import/export functionality
+- Smart version range validation
+- Channel compatibility checking
+- Auto-correction for invalid ranges
+- Real-time validation feedback
 - Validation and preview
 
 ### Mirror Operations

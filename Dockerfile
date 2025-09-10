@@ -5,7 +5,7 @@ FROM node:20 AS builder
 WORKDIR /app
 
 # Upgrade npm to latest
-RUN npm install -g npm@latest
+RUN npm install -g npm@11.6.0
 
 # Copy package files
 COPY package*.json ./
@@ -29,7 +29,7 @@ FROM node:20 AS production
 ARG TARGETARCH
 
 # Upgrade npm to latest
-RUN npm install -g npm@latest
+RUN npm install -g npm@11.6.0
 
 # Install system dependencies and OpenShift tools
 RUN apt-get update && apt-get install -y \
