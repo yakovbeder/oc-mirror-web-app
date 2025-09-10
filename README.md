@@ -2,7 +2,7 @@
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. This application provides a user-friendly way to create, manage, and execute mirror configurations without requiring command-line expertise.
 
-**Current Version: v3.1.3**
+**Current Version: v3.1.4**
 
 ## 📋 Table of Contents
 
@@ -233,6 +233,8 @@ chmod +x podman-compose.sh
 
 ### 🎯 Core Functionality
 - **Configuration Management**: Create, edit, and manage mirror configurations
+- **YAML Upload & Import**: Upload existing ImageSetConfiguration YAML files with validation and conflict resolution
+- **Configuration Deletion**: Delete unwanted configuration files with confirmation dialogs
 - **Operation Execution**: Run mirror operations with real-time monitoring
 - **History Tracking**: View and analyze past operations
 - **Log Management**: Centralized logging with search and filtering
@@ -244,9 +246,11 @@ chmod +x podman-compose.sh
 ### 🔧 Technical Features
 - **Real-time Updates**: Live status updates during operations
 - **File Management**: Upload, download, and manage configuration files
+- **YAML Validation**: Comprehensive validation of uploaded ImageSetConfiguration files
+- **Conflict Resolution**: Smart handling of file conflicts with auto-rename and overwrite options
 - **Error Handling**: Comprehensive error reporting and recovery
 - **Responsive Design**: Works on desktop and mobile devices
-- **RESTful API**: Full API for integration with other tools
+- **RESTful API**: Full API for integration with other tools including upload and delete endpoints
 - **Dynamic Operator Discovery**: Real-time query of operator catalogs
 - **Smart Operator Selection**: Dropdown lists with dynamic operator packages and channels
 - **Multi-Format Catalog Support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
@@ -394,9 +398,12 @@ mirror:
 - Real-time progress monitoring
 - Log streaming
 - Operation cancellation
+- **YAML Upload Section**: Clean inline interface for uploading existing ImageSetConfiguration files
+- **Configuration Management**: Delete unwanted configuration files with professional confirmation dialogs
 - **Dynamic Download Progress**: Real-time progress bar for archive creation and download
 - **Smart Modal Management**: Automatic modal closure with success notifications
 - **Robust Error Handling**: Graceful handling of download failures and edge cases
+- **Auto-scroll Navigation**: Seamless user flow from upload to operation execution
 
 ### History
 - Comprehensive operation history
@@ -433,6 +440,8 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 - `GET /api/stats` - Application statistics
 - `GET /api/config/list` - List configurations
 - `POST /api/config/save` - Create/save configuration
+- `POST /api/config/upload` - Upload YAML configuration files with validation
+- `DELETE /api/config/delete/:filename` - Delete configuration files with security validation
 - `GET /api/operations` - List operations
 - `POST /api/operations/start` - Start operation
 - `GET /api/operations/:id/download` - Download operation archive

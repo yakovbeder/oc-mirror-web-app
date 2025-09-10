@@ -141,6 +141,66 @@ Save a new configuration.
 }
 ```
 
+#### POST /api/config/upload
+Upload a YAML configuration file.
+
+**Request Body:**
+```json
+{
+  "filename": "my-config.yaml",
+  "content": "kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  operators:\n  - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.19\n    packages:\n    - name: advanced-cluster-management"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Configuration uploaded successfully",
+    "filename": "my-config.yaml"
+  }
+}
+```
+
+**Error Response (File Already Exists):**
+```json
+{
+  "success": false,
+  "error": "File already exists",
+  "code": "FILE_EXISTS",
+  "data": {
+    "filename": "my-config.yaml"
+  }
+}
+```
+
+#### DELETE /api/config/delete/:filename
+Delete a configuration file.
+
+**Parameters:**
+- `filename`: Name of the configuration file to delete
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Configuration deleted successfully",
+    "filename": "my-config.yaml"
+  }
+}
+```
+
+**Error Response (File Not Found):**
+```json
+{
+  "success": false,
+  "error": "Configuration file not found",
+  "code": "FILE_NOT_FOUND"
+}
+```
+
 ### Platform Channels
 
 #### GET /api/channels
@@ -422,6 +482,11 @@ Clean up old log files.
 | `OPERATION_FAILED` | Operation execution failed |
 | `REGISTRY_AUTH_FAILED` | Registry authentication failed |
 | `CATALOG_FETCH_FAILED` | Failed to fetch operator catalog |
+| `FILE_EXISTS` | Configuration file already exists |
+| `FILE_NOT_FOUND` | Configuration file not found |
+| `INVALID_YAML` | Invalid YAML format in uploaded file |
+| `INVALID_KIND` | Invalid ImageSetConfiguration kind |
+| `INVALID_API_VERSION` | Invalid API version in uploaded file |
 | `SYSTEM_ERROR` | Internal system error |
 
 ## Rate Limiting
