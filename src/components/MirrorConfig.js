@@ -235,18 +235,42 @@ const MirrorConfig = () => {
   };
 
   const updatePlatformChannel = (index, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      mirror: {
-        ...prev.mirror,
-        platform: {
-          ...prev.mirror.platform,
-          channels: prev.mirror.platform.channels.map((channel, i) => 
-            i === index ? { ...channel, [field]: value } : channel
-          )
+    setConfig(prev => {
+      const newConfig = {
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          platform: {
+            ...prev.mirror.platform,
+            channels: prev.mirror.platform.channels.map((channel, i) => 
+              i === index ? { ...channel, [field]: value } : channel
+            )
+          }
+        }
+      };
+
+      // Validate version range after update
+      const channel = newConfig.mirror.platform.channels[index];
+      
+      if (field === 'minVersion' || field === 'maxVersion') {
+        // For platform channels, we'll use a simple validation since we don't have available versions
+        const validation = validateVersionRange(channel.minVersion, channel.maxVersion, []);
+        
+        if (!validation.isValid) {
+          // Show validation warning
+          toast.warning(`Platform Channel Warning: ${validation.message}`, {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         }
       }
-    }));
+
+      return newConfig;
+    });
   };
 
   const addOperator = async () => {
@@ -403,29 +427,55 @@ const MirrorConfig = () => {
   };
 
   const updateOperatorPackageChannelVersion = (operatorIndex, packageIndex, channelIndex, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      mirror: {
-        ...prev.mirror,
-        operators: prev.mirror.operators.map((op, i) => 
-          i === operatorIndex 
-            ? { 
-                ...op, 
-                packages: op.packages.map((pkg, pIndex) => 
-                  pIndex === packageIndex 
-                    ? { 
-                        ...pkg, 
-                        channels: (pkg.channels || []).map((channel, cIndex) => 
-                          cIndex === channelIndex ? { ...channel, [field]: value } : channel
-                        )
-                      } 
-                    : pkg
-                )
-              }
-            : op
-        )
+    setConfig(prev => {
+      const newConfig = {
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          operators: prev.mirror.operators.map((op, i) => 
+            i === operatorIndex 
+              ? { 
+                  ...op, 
+                  packages: op.packages.map((pkg, pIndex) => 
+                    pIndex === packageIndex 
+                      ? { 
+                          ...pkg, 
+                          channels: (pkg.channels || []).map((channel, cIndex) => 
+                            cIndex === channelIndex ? { ...channel, [field]: value } : channel
+                          )
+                        } 
+                      : pkg
+                  )
+                }
+              : op
+          )
+        }
+      };
+
+      // Validate version range after update
+      const operator = newConfig.mirror.operators[operatorIndex];
+      const pkg = operator.packages[packageIndex];
+      const channel = pkg.channels[channelIndex];
+      
+      if (field === 'minVersion' || field === 'maxVersion') {
+        const availableVersions = getChannelVersions(operatorIndex, packageIndex, channel.name);
+        const validation = validateVersionRange(channel.minVersion, channel.maxVersion, availableVersions);
+        
+        if (!validation.isValid) {
+          // Show validation warning
+          toast.warning(`Version Range Warning: ${validation.message}`, {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+        }
       }
-    }));
+
+      return newConfig;
+    });
   };
 
   const addAdditionalImage = () => {
