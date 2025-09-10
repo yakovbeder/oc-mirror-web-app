@@ -1,6 +1,6 @@
 # Quick Start Guide - OC Mirror v2 Web Application
 
-**Current Version: v3.0**
+**Current Version: v3.1.5**
 
 ## 🚀 Containerized Deployment (Recommended)
 
@@ -48,11 +48,18 @@ The script automatically detects whether you have Podman and uses it.
    - Select channels from real-time catalog data
 5. Save the configuration
 
+**Alternative: Upload Existing Configuration**
+1. Go to **Mirror Operations** tab
+2. Click **📤 Upload YAML** button
+3. Drag & drop or select your existing ImageSetConfiguration YAML file
+4. Review the preview and save with auto-generated name or overwrite existing file
+
 ### Step 5: Run Your First Operation
 1. Go to **Mirror Operations** tab
-2. Select your configuration
-3. Click **Start Operation**
-4. Monitor progress in real-time
+2. Select your configuration from the dropdown
+3. **Optional**: Delete unwanted configurations using the **🗑️ Delete** button
+4. Click **Start Operation**
+5. Monitor progress in real-time
 
 ## 🐳 Container Runtime Options
 
@@ -90,7 +97,7 @@ The containerized version includes:
 - ✅ **Pre-fetched operator catalogs** (fast access to operator data)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
-- ✅ **Version 3.0 features** (enhanced channel selection, improved UI, better error handling)
+- ✅ **Version 3.1.5 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling)
 
 ## 🔧 Container Management
 
