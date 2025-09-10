@@ -1,0 +1,17 @@
+{
+  "maxConcurrentOperations": 1,
+  "logRetentionDays": 30,
+  "autoCleanup": true,
+  "registryCredentials": {
+    "username": "",
+    "password": "",
+    "registry": ""
+  },
+  "proxySettings": {
+    "enabled": false,
+    "host": "",
+    "port": "",
+    "username": "",
+    "password": ""
+  }
+}

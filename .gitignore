@@ -82,6 +82,7 @@ data/cache/*
 !data/operations/.gitkeep
 !data/logs/.gitkeep
 !data/cache/.gitkeep
+!data/settings.json
 
 # Container images
 *.tar
