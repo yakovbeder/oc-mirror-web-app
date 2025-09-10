@@ -253,19 +253,26 @@ const MirrorConfig = () => {
       const channel = newConfig.mirror.platform.channels[index];
       
       if (field === 'minVersion' || field === 'maxVersion') {
-        // For platform channels, we'll use a simple validation since we don't have available versions
-        const validation = validateVersionRange(channel.minVersion, channel.maxVersion, []);
-        
-        if (!validation.isValid) {
-          // Show validation warning
-          toast.warning(`Platform Channel Warning: ${validation.message}`, {
-            position: "top-right",
-            autoClose: 5000,
-            hideProgressBar: false,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-          });
+        // For platform channels, only validate basic logic (min <= max)
+        if (channel.minVersion && channel.maxVersion) {
+          const versionToNumber = (version) => {
+            const parts = version.split('.').map(Number);
+            return parts[0] * 1000000 + parts[1] * 1000 + (parts[2] || 0);
+          };
+          
+          const minNum = versionToNumber(channel.minVersion);
+          const maxNum = versionToNumber(channel.maxVersion);
+          
+          if (minNum > maxNum) {
+            toast.warning(`Platform Channel Warning: Min version cannot be greater than max version`, {
+              position: "top-right",
+              autoClose: 5000,
+              hideProgressBar: false,
+              closeOnClick: true,
+              pauseOnHover: true,
+              draggable: true,
+            });
+          }
         }
       }
 
