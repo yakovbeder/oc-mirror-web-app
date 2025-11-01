@@ -82,34 +82,44 @@ fix_permissions() {
         return 0
     fi
     
-    # Check if directories are already owned by container user (UID 1001 or similar)
+    # Check if directories are already owned by container user (UID 1000 - node user in node:20-slim image)
     local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
     local downloads_owner=$(stat -c '%u' downloads/ 2>/dev/null || echo "unknown")
     
-    if [ "$data_owner" != "1001" ] && [ "$data_owner" != "101000" ]; then
-        print_status "Fixing directory permissions for container user..."
+    # Container runs as node user (UID 1000), check if ownership needs fixing
+    # Also check mirror directories
+    local mirror_owner=$(stat -c '%u' data/mirrors/ 2>/dev/null || echo "unknown")
+    
+    if [ "$data_owner" != "1000" ] && [ "$data_owner" != "unknown" ]; then
+        print_status "Fixing directory permissions for container user (UID 1000)..."
         
-        # Try to fix permissions, but don't fail if we can't
-        if chmod -R 755 data/ downloads/ 2>/dev/null; then
-            print_success "Permissions set to 755"
+        # Try to fix permissions - use 777 (world-writable) to ensure node user can write
+        # This is safe for local data directories and handles volume mount ownership issues
+        if chmod -R 777 data/ downloads/ 2>/dev/null; then
+            print_success "Permissions set to 777 (world-writable - required for volume mounts)"
         else
-            print_warning "Could not set permissions to 755, trying alternative approach..."
-            if chmod -R 777 data/ downloads/ 2>/dev/null; then
-                print_success "Permissions set to 777 (world-writable)"
+            print_warning "Could not set permissions. Trying with sudo..."
+            if sudo chmod -R 777 data/ downloads/ 2>/dev/null; then
+                print_success "Permissions set to 777 with sudo"
             else
-                print_warning "Could not change permissions. Container may have issues."
-                print_warning "You may need to run: sudo chmod -R 755 data/ downloads/"
+                print_warning "Could not change permissions even with sudo."
+                print_warning "Manual fix required: sudo chmod -R 777 data/ downloads/"
             fi
         fi
         
-        # Try to change ownership, but don't fail if we can't
-        if chown -R 1001:1001 data/ downloads/ 2>/dev/null; then
-            print_success "Ownership changed to container user (UID 1001)"
+        # Try to change ownership to node user (UID 1000), but don't fail if we can't
+        if chown -R 1000:1000 data/ downloads/ 2>/dev/null; then
+            print_success "Ownership changed to container user (UID 1000 - node user)"
         else
             print_warning "Could not change ownership (may need sudo). Continuing anyway..."
+            print_warning "To fix manually, run: sudo chown -R 1000:1000 data/ downloads/"
         fi
     else
-        print_success "Directories already owned by container user (UID $data_owner)"
+        if [ "$data_owner" = "1000" ]; then
+            print_success "Directories already owned by container user (UID 1000)"
+        else
+            print_status "Directories will be created by container with correct permissions"
+        fi
     fi
 }
 
@@ -133,6 +143,15 @@ create_directories() {
         mkdir -p downloads
     else
         print_success "Downloads directory already exists"
+    fi
+    
+    # Create default mirror directory in mounted volume (persistent)
+    if [ ! -d "data/mirrors" ]; then
+        print_status "Creating default mirror storage directory..."
+        mkdir -p data/mirrors/default
+        print_success "Created data/mirrors/default (default persistent mirror location)"
+    else
+        print_success "Mirror storage directory already exists"
     fi
     
     # Fix permissions for container user
@@ -181,10 +200,16 @@ build_image() {
     print_status "Building container image with $CONTAINER_ENGINE..."
     
     # Build for native architecture (do not force amd64)
-    if $CONTAINER_ENGINE build -t oc-mirror-web-app .; then
-        print_success "Container image built successfully (native arch)"
+    # Use Docker format to support HEALTHCHECK (Podman uses OCI by default which doesn't support HEALTHCHECK)
+    local build_cmd="$CONTAINER_ENGINE build"
+    if [ "$CONTAINER_ENGINE" = "podman" ]; then
+        build_cmd="$build_cmd --format docker"
+    fi
+    
+    if $build_cmd -t oc-mirror-web-app .; then
+        print_success "Container image built successfully"
     else
-        print_error "Failed to build container image (native arch)"
+        print_error "Failed to build container image"
         exit 1
     fi
 }

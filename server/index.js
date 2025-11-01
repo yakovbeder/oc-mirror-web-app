@@ -50,8 +50,77 @@ async function ensureDirectories() {
   }
 }
 
+// Clear operation history and logs on startup (if mirror files don't persist)
+// Note: With custom mirror destinations (default: /app/data/mirrors/default), 
+// mirror files persist across restarts, so we keep operation history
+async function clearOperationHistory() {
+  // Check if default mirror directory exists and has files
+  const defaultMirrorPath = '/app/data/mirrors/default';
+  let hasPersistedMirrors = false;
+  
+  try {
+    const files = await fs.readdir(defaultMirrorPath);
+    hasPersistedMirrors = files.length > 0;
+  } catch {
+    // Directory doesn't exist or empty - this is a fresh start
+    hasPersistedMirrors = false;
+  }
+  
+  // Only clear if no persisted mirrors exist (fresh start)
+  // With persistent mirrors, we keep history so users can see where files are
+  if (!hasPersistedMirrors) {
+    let clearedOps = 0;
+    let clearedLogs = 0;
+    
+    // Clear operation files
+    try {
+      const opFiles = await fs.readdir(OPERATIONS_DIR);
+      for (const file of opFiles) {
+        if (file.endsWith('.json')) {
+          try {
+            await fs.unlink(path.join(OPERATIONS_DIR, file));
+            clearedOps++;
+          } catch (error) {
+            console.warn(`Failed to delete operation file ${file}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('Error reading operations directory:', error);
+      }
+    }
+    
+    // Clear log files
+    try {
+      const logFiles = await fs.readdir(LOGS_DIR);
+      for (const file of logFiles) {
+        try {
+          await fs.unlink(path.join(LOGS_DIR, file));
+          clearedLogs++;
+        } catch (error) {
+          console.warn(`Failed to delete log file ${file}:`, error);
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('Error reading logs directory:', error);
+      }
+    }
+    
+    if (clearedOps > 0 || clearedLogs > 0) {
+      console.log(`Cleared ${clearedOps} operation files and ${clearedLogs} log files on startup (fresh start detected)`);
+    }
+  } else {
+    console.log('Persistent mirror files detected - keeping operation history');
+  }
+}
+
 // Initialize storage
-ensureDirectories();
+ensureDirectories().then(() => {
+  // Clear operation history after directories are ensured
+  clearOperationHistory();
+});
 
 // File upload configuration (using multer v2 syntax)
 // Note: Currently not used, but available for future file upload features
@@ -626,6 +695,59 @@ app.get('/api/system/status', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get system status' });
+  }
+});
+
+// Get available paths for mirror destination
+app.get('/api/system/paths', async (req, res) => {
+  try {
+    const commonPaths = [
+      { 
+        path: '/app/data/mirrors/default', 
+        label: 'Default (Persistent)', 
+        description: 'Recommended - survives container restarts, mounted volume' 
+      },
+      { 
+        path: '/app/data/mirrors', 
+        label: 'Data Mirrors Root', 
+        description: 'Persistent - mounted volume, create subdirectories as needed' 
+      },
+      { 
+        path: '/app/data/mirrors/custom', 
+        label: 'Custom Directory', 
+        description: 'Persistent - create custom subdirectory for this operation' 
+      },
+      { 
+        path: '/app/downloads', 
+        label: 'Downloads', 
+        description: 'Persistent - mounted volume, shared with downloads' 
+      },
+      { 
+        path: '/app/mirror', 
+        label: 'Container Mirror (Ephemeral)', 
+        description: '⚠️ Ephemeral - lost on container restart, not recommended' 
+      }
+    ];
+    
+    // Check which paths exist and are writable
+    const availablePaths = [];
+    for (const pathInfo of commonPaths) {
+      try {
+        // Try to create directory if it doesn't exist
+        await fs.mkdir(pathInfo.path, { recursive: true });
+        // Check if writable
+        await fs.access(pathInfo.path, fs.constants.W_OK);
+        pathInfo.available = true;
+      } catch {
+        pathInfo.available = false;
+      }
+      availablePaths.push(pathInfo);
+    }
+    
+    res.json({ paths: availablePaths });
+  } catch (error) {
+    console.error('Error listing paths:', error);
+    res.status(500).json({ error: 'Failed to list available paths' });
   }
 });
 
@@ -1265,7 +1387,7 @@ app.get('/api/operations/history', async (req, res) => {
 
 app.post('/api/operations/start', async (req, res) => {
   try {
-    const { configFile } = req.body;
+    const { configFile, mirrorDestination } = req.body;
     const operationId = uuidv4();
     const configPath = path.join(CONFIGS_DIR, configFile);
     
@@ -1276,11 +1398,46 @@ app.post('/api/operations/start', async (req, res) => {
       return res.status(404).json({ error: 'Configuration file not found' });
     }
 
-    // Create operation record
+    // Determine mirror destination path (default: /app/data/mirrors/default - persistent)
+    let mirrorPath = '/app/data/mirrors/default';  // Default persistent path
+    if (mirrorDestination && mirrorDestination.trim()) {
+      mirrorPath = mirrorDestination.trim();
+      
+      // Validate path format
+      if (!path.isAbsolute(mirrorPath)) {
+        return res.status(400).json({ 
+          error: 'Mirror destination must be an absolute path',
+          provided: mirrorPath
+        });
+      }
+      
+      // Validate path exists or can be created
+      try {
+        await fs.mkdir(mirrorPath, { recursive: true });
+        // Check if writable
+        await fs.access(mirrorPath, fs.constants.W_OK);
+      } catch (error) {
+        return res.status(400).json({ 
+          error: 'Cannot access or create mirror destination directory',
+          path: mirrorPath,
+          details: error.message
+        });
+      }
+    } else {
+      // Ensure default path exists
+      try {
+        await fs.mkdir(mirrorPath, { recursive: true });
+      } catch (error) {
+        console.warn(`Could not create default mirror directory ${mirrorPath}:`, error);
+      }
+    }
+
+    // Create operation record (store mirror path)
     const operation = {
       id: operationId,
       name: `Mirror Operation ${operationId.slice(0, 8)}`,
       configFile,
+      mirrorDestination: mirrorPath,  // Store for reference
       status: 'running',
       startedAt: new Date().toISOString(),
       logs: []
@@ -1294,6 +1451,18 @@ app.post('/api/operations/start', async (req, res) => {
     // Create log file stream
     const logStream = require('fs').createWriteStream(logFile);
     
+    // Convert absolute path to file:// URL format
+    // /app/data/mirrors/default -> file://data/mirrors/default (relative to /app)
+    // /custom/path -> file:///custom/path (absolute with three slashes)
+    let mirrorUrl;
+    if (mirrorPath.startsWith('/app/')) {
+      // Relative to /app working directory
+      mirrorUrl = `file://${mirrorPath.substring(5)}`;
+    } else {
+      // Absolute path (needs three slashes)
+      mirrorUrl = `file://${mirrorPath}`;
+    }
+    
     // Spawn the oc-mirror process
     const child = spawn('oc-mirror', [
       '--v2',
@@ -1302,9 +1471,10 @@ app.post('/api/operations/start', async (req, res) => {
       '--src-tls-verify=false',
       '--cache-dir', CACHE_DIR,
       '--authfile', '/app/pull-secret.json',
-      'file://mirror'
+      mirrorUrl  // Use custom or default path
     ], {
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: '/app'  // Set working directory for relative paths
     });
     
     // Track the process
@@ -1693,164 +1863,6 @@ async function countFiles(dirPath) {
   }
   return count;
 }
-
-// Download progress endpoint (Simple JSON response)
-app.get('/api/operations/:id/download-progress', (req, res) => {
-  const { id } = req.params;
-  
-  // Initialize progress tracking if not exists
-  if (!global.downloadProgress) {
-    global.downloadProgress = new Map();
-  }
-  
-  // Get current progress for this download
-  const progress = global.downloadProgress.get(id) || { progress: 0, message: 'Initializing download...' };
-  
-  res.json(progress);
-});
-
-// Download mirror files endpoint
-app.get('/api/operations/:id/download', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const operation = await getOperation(id);
-    
-    if (!operation) {
-      return res.status(404).json({ error: 'Operation not found' });
-    }
-    
-    if (operation.status !== 'success') {
-      return res.status(400).json({ error: 'Operation must be successful to download files' });
-    }
-    
-    const mirrorDir = '/app/mirror';
-    
-    // Check if mirror directory exists
-    try {
-      await fs.access(mirrorDir);
-    } catch (error) {
-      return res.status(404).json({ error: 'Mirror files not found. Operation may not have completed successfully.' });
-    }
-    
-    // Send progress updates with debugging
-    const sendProgress = (progress, message) => {
-      console.log(`[PROGRESS] ${progress}%: ${message}`);
-      // Store progress data for polling
-      if (!global.downloadProgress) {
-        global.downloadProgress = new Map();
-      }
-      global.downloadProgress.set(id, { progress, message });
-    };
-    
-    sendProgress(10, 'Scanning mirror directory...');
-    
-    // Get directory size for progress calculation
-    const getDirectorySize = async (dirPath) => {
-      let totalSize = 0;
-      const files = await fs.readdir(dirPath, { withFileTypes: true });
-      
-      for (const file of files) {
-        const fullPath = path.join(dirPath, file.name);
-        if (file.isDirectory()) {
-          totalSize += await getDirectorySize(fullPath);
-        } else {
-          const stats = await fs.stat(fullPath);
-          totalSize += stats.size;
-        }
-      }
-      return totalSize;
-    };
-    
-    const totalSize = await getDirectorySize(mirrorDir);
-    sendProgress(20, `Found ${totalSize} bytes to archive...`);
-    
-    // Create a temporary tar.gz file
-    const tarFileName = `mirror-files-${id}-${Date.now()}.tar.gz`;
-    const tarFilePath = path.join(DOWNLOADS_DIR, tarFileName);
-    
-    sendProgress(30, 'Creating tar.gz archive...');
-    
-    // Set response headers for file download
-    res.setHeader('Content-Type', 'application/gzip');
-    res.setHeader('Content-Disposition', `attachment; filename="${tarFileName}"`);
-    
-    // Create archive with simple progress tracking
-    sendProgress(40, 'Creating archive...');
-    
-    // Use a simple approach with manual progress updates
-    const { spawn } = require('child_process');
-    const tarProcess = spawn('tar', ['-czf', tarFilePath, '-C', '/app', 'mirror'], {
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    
-    let progressCounter = 40;
-    const progressInterval = setInterval(() => {
-      if (progressCounter < 85) {
-        progressCounter += 5;
-        sendProgress(progressCounter, `Creating archive... ${progressCounter}%`);
-      }
-    }, 200);
-    
-    // Handle tar process completion
-    tarProcess.on('close', async (code) => {
-      clearInterval(progressInterval);
-      
-      if (code === 0) {
-        sendProgress(90, 'Archive created successfully');
-        try {
-          sendProgress(95, 'Archive creation completed. Initializing download...');
-          
-          // Get file stats for Content-Length
-          const stats = await fs.stat(tarFilePath);
-          res.setHeader('Content-Length', stats.size);
-          
-          sendProgress(100, 'Download starting in browser...');
-          
-          // Clean up progress data after sending 100%
-          setTimeout(() => {
-            if (global.downloadProgress) {
-              global.downloadProgress.delete(id);
-            }
-          }, 1000); // Clean up after 1 second
-          
-          // Stream the tar.gz file to response
-          const fileStream = require('fs').createReadStream(tarFilePath);
-          fileStream.pipe(res);
-          
-          // Clean up the temporary tar.gz file after streaming
-          fileStream.on('end', async () => {
-            try {
-              await fs.unlink(tarFilePath);
-              // Clean up progress data
-              if (global.downloadProgress) {
-                global.downloadProgress.delete(id);
-              }
-            } catch (cleanupError) {
-              console.error('Error cleaning up temporary tar.gz file:', cleanupError);
-            }
-          });
-        } catch (error) {
-          console.error('Error streaming tar.gz file:', error);
-          res.status(500).json({ error: 'Failed to download files' });
-        }
-      } else {
-        console.error('Tar process failed with code:', code);
-        res.status(500).json({ error: 'Failed to create download archive' });
-      }
-    });
-    
-    // Handle tar process errors
-    tarProcess.on('error', (err) => {
-      clearInterval(progressInterval);
-      console.error('Error creating archive:', err);
-      res.status(500).json({ error: 'Failed to create download archive' });
-    });
-    
-  } catch (error) {
-    console.error('Error downloading mirror files:', error);
-    res.status(500).json({ error: 'Failed to download mirror files' });
-  }
-});
 
 // Cache static files (must be after API routes)
 app.use(express.static(path.join(__dirname, '../build'), {

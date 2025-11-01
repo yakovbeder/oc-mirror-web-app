@@ -25,3 +25,6 @@ data/cache/
 # Exclude runtime data directories (will be created at runtime)
 data/logs/
 data/operations/
+
+# Exclude downloads directory (contains large tar.gz files)
+downloads/
