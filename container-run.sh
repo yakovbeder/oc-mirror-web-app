@@ -77,14 +77,13 @@ fix_permissions() {
     print_status "Checking directory permissions..."
     
     # Check if directories are writable by current user
-    if [ -w "data" ] && [ -w "downloads" ]; then
+    if [ -w "data" ]; then
         print_success "Directories have proper permissions"
         return 0
     fi
     
     # Check if directories are already owned by container user (UID 1000 - node user in node:20-slim image)
     local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
-    local downloads_owner=$(stat -c '%u' downloads/ 2>/dev/null || echo "unknown")
     
     # Container runs as node user (UID 1000), check if ownership needs fixing
     # Also check mirror directories
@@ -95,24 +94,24 @@ fix_permissions() {
         
         # Try to fix permissions - use 777 (world-writable) to ensure node user can write
         # This is safe for local data directories and handles volume mount ownership issues
-        if chmod -R 777 data/ downloads/ 2>/dev/null; then
+        if chmod -R 777 data/ 2>/dev/null; then
             print_success "Permissions set to 777 (world-writable - required for volume mounts)"
         else
             print_warning "Could not set permissions. Trying with sudo..."
-            if sudo chmod -R 777 data/ downloads/ 2>/dev/null; then
+            if sudo chmod -R 777 data/ 2>/dev/null; then
                 print_success "Permissions set to 777 with sudo"
             else
                 print_warning "Could not change permissions even with sudo."
-                print_warning "Manual fix required: sudo chmod -R 777 data/ downloads/"
+                print_warning "Manual fix required: sudo chmod -R 777 data/"
             fi
         fi
         
         # Try to change ownership to node user (UID 1000), but don't fail if we can't
-        if chown -R 1000:1000 data/ downloads/ 2>/dev/null; then
+        if chown -R 1000:1000 data/ 2>/dev/null; then
             print_success "Ownership changed to container user (UID 1000 - node user)"
         else
             print_warning "Could not change ownership (may need sudo). Continuing anyway..."
-            print_warning "To fix manually, run: sudo chown -R 1000:1000 data/ downloads/"
+            print_warning "To fix manually, run: sudo chown -R 1000:1000 data/"
         fi
     else
         if [ "$data_owner" = "1000" ]; then
@@ -138,20 +137,21 @@ create_directories() {
         print_success "Data directory already exists"
     fi
     
-    if [ ! -d "downloads" ]; then
-        print_status "Creating downloads directory..."
-        mkdir -p downloads
-    else
-        print_success "Downloads directory already exists"
-    fi
-    
     # Create default mirror directory in mounted volume (persistent)
     if [ ! -d "data/mirrors" ]; then
-        print_status "Creating default mirror storage directory..."
-        mkdir -p data/mirrors/default
-        print_success "Created data/mirrors/default (default persistent mirror location)"
+        print_status "Creating mirror storage base directory..."
+        mkdir -p data/mirrors
+        chmod -R 777 data/mirrors 2>/dev/null || true
+        print_success "Created data/mirrors (persistent mirror location - survives container restarts)"
     else
         print_success "Mirror storage directory already exists"
+        chmod -R 777 data/mirrors 2>/dev/null || true
+    fi
+    
+    # Ensure default subdirectory exists
+    if [ ! -d "data/mirrors/default" ]; then
+        mkdir -p data/mirrors/default
+        chmod -R 777 data/mirrors/default 2>/dev/null || true
     fi
     
     # Fix permissions for container user
@@ -234,12 +234,10 @@ run_container() {
         --name oc-mirror-web-app \
         -p 3000:3001 \
         -v "$(pwd)/data:/app/data:z" \
-        -v "$(pwd)/downloads:/app/downloads:z" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \
-        -e DOWNLOADS_DIR=/app/downloads \
         -e OC_MIRROR_CACHE_DIR=/app/data/cache \
         -e LOG_LEVEL=info \
         --restart unless-stopped \
@@ -261,7 +259,7 @@ show_status() {
     echo "🔧 API Server: http://localhost:3000/api (proxied through web interface)"
     echo ""
     echo "📁 Data Directory: $(pwd)/data"
-    echo "📥 Downloads Directory: $(pwd)/downloads"
+    echo "📦 Mirror Storage: $(pwd)/data/mirrors/default → /app/data/mirrors/default (persistent)"
     echo "📋 Container Name: oc-mirror-web-app"
     echo "🔧 Container Engine: $CONTAINER_ENGINE"
     echo "🏗️  System Architecture: $ARCH_NAME"

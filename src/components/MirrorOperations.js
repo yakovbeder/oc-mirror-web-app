@@ -29,15 +29,15 @@ const MirrorOperations = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteFilename, setDeleteFilename] = useState('');
   
-  // Mirror destination path state
-  const [mirrorDestination, setMirrorDestination] = useState('');
-  const [showPathBrowser, setShowPathBrowser] = useState(false);
-  const [availablePaths, setAvailablePaths] = useState([]);
+  // Mirror destination subdirectory state
+  const [mirrorDestinationSubdir, setMirrorDestinationSubdir] = useState('');
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [notifiedOperations, setNotifiedOperations] = useState(new Set());
+  const [showMirrorLocation, setShowMirrorLocation] = useState({});
 
   useEffect(() => {
     fetchOperations();
     fetchConfigurations();
-    fetchAvailablePaths();
     const interval = setInterval(fetchOperations, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,7 +63,25 @@ const MirrorOperations = () => {
   const fetchOperations = async () => {
     try {
       const response = await axios.get('/api/operations');
+      const previousOps = operations;
       setOperations(response.data);
+      
+      // Check for newly completed operations and show location (only once per operation)
+      response.data.forEach(op => {
+        if (op.status === 'success' && op.mirrorDestination && !notifiedOperations.has(op.id)) {
+          const prevOp = previousOps.find(p => p.id === op.id);
+          // If operation just completed (was running or didn't exist before)
+          if (!prevOp || prevOp.status === 'running') {
+            const hostPath = op.mirrorDestination.replace('/app/data', 'data').replace('/app/downloads', 'downloads');
+            toast.success(
+              `✅ Mirror Operation Completed!`,
+              { duration: 5000 }
+            );
+            // Mark this operation as notified
+            setNotifiedOperations(prev => new Set(prev).add(op.id));
+          }
+        }
+      });
       
       // Check if any operation is running
       const running = response.data.find(op => op.status === 'running');
@@ -88,21 +106,6 @@ const MirrorOperations = () => {
     }
   };
 
-  const fetchAvailablePaths = async () => {
-    try {
-      const response = await axios.get('/api/system/paths');
-      setAvailablePaths(response.data.paths || []);
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Error fetching available paths:', error);
-      // Set default paths if API fails
-      setAvailablePaths([
-        { path: '/app/data/mirrors/default', label: 'Default (Persistent)', description: 'Recommended - survives container restarts', available: true },
-        { path: '/app/data/mirrors', label: 'Data Mirrors', description: 'Persistent - mounted volume', available: true },
-        { path: '/app/mirror', label: 'Container Mirror', description: 'Ephemeral - lost on restart', available: true }
-      ]);
-    }
-  };
 
   const fetchLogs = async (operationId) => {
     try {
@@ -156,14 +159,14 @@ const MirrorOperations = () => {
       setLoading(true);
       const response = await axios.post('/api/operations/start', {
         configFile: selectedConfig,
-        mirrorDestination: mirrorDestination.trim() || undefined
+        mirrorDestinationSubdir: mirrorDestinationSubdir.trim() || undefined
       });
       
       toast.success('Operation started successfully!');
       setShowLogs(true);
       fetchOperations();
-      // Clear mirror destination after starting
-      setMirrorDestination('');
+      // Clear mirror destination subdirectory after starting
+      setMirrorDestinationSubdir('');
       
       // Start polling for logs if operation is running
       if (response.data.status === 'running') {
@@ -542,11 +545,6 @@ const MirrorOperations = () => {
     setShowLogs(false);
   };
 
-  // Path browser handlers
-  const handlePathSelect = (selectedPath) => {
-    setMirrorDestination(selectedPath);
-    setShowPathBrowser(false);
-  };
 
   // Auto-scroll to bottom when logs update
   useEffect(() => {
@@ -569,20 +567,20 @@ const MirrorOperations = () => {
 
       <div className="card">
         <h3>🚀 Start New Operation</h3>
-        <div className="grid">
+        
         <div className="form-group">
           <label>Configuration File</label>
           <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr auto auto auto', 
+            display: 'flex', 
             gap: '0.75rem', 
-            alignItems: 'center' 
+            alignItems: 'center',
+            flexWrap: 'wrap'
           }}>
             <select
               className="form-control"
               value={selectedConfig}
               onChange={(e) => setSelectedConfig(e.target.value)}
-              style={{ minWidth: '200px' }}
+              style={{ minWidth: '200px', flex: '1 1 200px' }}
             >
               <option value="">Select a configuration file...</option>
               {availableConfigs.map(config => (
@@ -602,56 +600,6 @@ const MirrorOperations = () => {
             >
               📤 Upload YAML
             </button>
-          </div>
-        </div>
-        
-        <div className="form-group" style={{ marginTop: '1rem' }}>
-          <label>
-            📁 Mirror Destination Path
-            <span style={{ color: '#6c757d', fontSize: '0.9rem', marginLeft: '0.5rem', fontWeight: 'normal' }}>
-              (Optional - defaults to /app/data/mirrors/default)
-            </span>
-          </label>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="/app/data/mirrors/default"
-              value={mirrorDestination}
-              onChange={(e) => setMirrorDestination(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setShowPathBrowser(true)}
-              title="Browse available paths"
-              style={{ 
-                whiteSpace: 'nowrap',
-                minWidth: '100px',
-                padding: '0.5rem 1rem'
-              }}
-            >
-              📂 Browse
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={() => setMirrorDestination('')}
-              title="Clear path (use default)"
-              style={{ padding: '0.5rem 0.75rem' }}
-            >
-              ✕
-            </button>
-          </div>
-          <small className="text-muted" style={{ display: 'block', marginTop: '0.5rem' }}>
-            Specify where to store mirrored files. Must be an absolute path accessible from container.
-            <br />
-            <strong>Default:</strong> /app/data/mirrors/default (persistent, survives container restarts)
-          </small>
-        </div>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0.75rem', alignItems: 'center' }}>
             {selectedConfig && (
               <button
                 className="btn btn-danger"
@@ -666,19 +614,100 @@ const MirrorOperations = () => {
                 🗑️ Delete
               </button>
             )}
-            <button 
-              className="btn btn-primary" 
-              onClick={startOperation}
-              disabled={!selectedConfig || loading}
-              style={{ 
-                whiteSpace: 'nowrap',
-                minWidth: '140px',
-                padding: '0.5rem 1rem'
-              }}
-            >
-              {loading ? <div className="loading"></div> : '▶️ Start Operation'}
-            </button>
           </div>
+        </div>
+        
+        <div className="form-group" style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap', position: 'relative' }}>
+          <div style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              📁 Mirror Destination Subdirectory
+              <span 
+                style={{ 
+                  cursor: 'pointer', 
+                  color: '#007bff', 
+                  fontSize: '0.9rem',
+                  fontWeight: 'bold',
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '50%',
+                  border: '1px solid #007bff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#f0f8ff',
+                  lineHeight: '1',
+                  flexShrink: 0
+                }}
+                onClick={() => setShowTooltip(!showTooltip)}
+                title="Click for help"
+              >
+                ?
+              </span>
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="default"
+              value={mirrorDestinationSubdir}
+              onChange={(e) => setMirrorDestinationSubdir(e.target.value)}
+              style={{ width: '250px', height: '38px' }}
+            />
+          </div>
+          <button 
+            className="btn btn-primary" 
+            onClick={startOperation}
+            disabled={!selectedConfig || loading}
+            style={{ 
+              whiteSpace: 'nowrap',
+              minWidth: '140px',
+              padding: '0.5rem 1rem',
+              height: '38px',
+              flexShrink: 0,
+              marginBottom: '0'
+            }}
+          >
+            {loading ? <div className="loading"></div> : '▶️ Start Operation'}
+          </button>
+          {showTooltip && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '0',
+              marginTop: '0.5rem',
+              padding: '0.75rem',
+              backgroundColor: '#fff',
+              border: '1px solid #dee2e6',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              lineHeight: '1.6',
+              zIndex: 1000,
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              maxWidth: '400px',
+              width: 'max-content'
+            }}>
+              <strong>How it works:</strong>
+              <br />
+              • Mirror files are saved to <code>data/mirrors/</code> on your host (this path is fixed and cannot be changed)
+              <br />
+              • If you leave this field empty, files are saved to <code>data/mirrors/default</code>
+              <br />
+              • If you enter a subdirectory name (e.g., <code>odf</code>), files are saved to <code>data/mirrors/odf</code>
+              <br />
+              • The subdirectory is created automatically if it doesn't exist, with correct permissions
+              <br />
+              <br />
+              <strong>Examples:</strong>
+              <br />
+              • Empty field → <code>data/mirrors/default</code>
+              <br />
+              • Enter <code>odf</code> → <code>data/mirrors/odf</code>
+              <br />
+              • Enter <code>production</code> → <code>data/mirrors/production</code>
+              <br />
+              <br />
+              <strong>Note:</strong> All files persist across container restarts since they are stored on your host filesystem.
+            </div>
+          )}
         </div>
         
         {runningOperation && (
@@ -728,6 +757,68 @@ const MirrorOperations = () => {
                         <strong>{op.name}</strong>
                         <br />
                         <small className="text-muted">{op.configFile}</small>
+                        {op.status === 'success' && op.mirrorDestination && showMirrorLocation[op.id] && (
+                          <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.85rem' }}>
+                            <div style={{ marginBottom: '0.75rem' }}>
+                              <strong style={{ color: '#155724', display: 'block', marginBottom: '0.5rem' }}>📁 Mirror Files Location</strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <code style={{ 
+                                  backgroundColor: '#fff', 
+                                  padding: '0.5rem', 
+                                  borderRadius: '4px',
+                                  border: '1px solid #ced4da',
+                                  flex: '1 1 300px',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.9rem',
+                                  wordBreak: 'break-all',
+                                  display: 'block'
+                                }}>
+                                  {(() => {
+                                    const hostPath = op.mirrorDestination.replace('/app/data', 'data').replace('/app/downloads', 'downloads');
+                                    // Construct full absolute path - project is typically in /home/ybeder/oc-mirror-web-app
+                                    const projectRoot = '/home/ybeder/oc-mirror-web-app';
+                                    return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+                                  })()}
+                                </code>
+                                <button
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={async () => {
+                                    const hostPath = op.mirrorDestination.replace('/app/data', 'data').replace('/app/downloads', 'downloads');
+                                    // Construct full absolute path - project is in /home/ybeder/oc-mirror-web-app
+                                    const projectRoot = '/home/ybeder/oc-mirror-web-app';
+                                    const fullPath = `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+                                    
+                                    try {
+                                      await navigator.clipboard.writeText(fullPath);
+                                      toast.success('Full path copied to clipboard!');
+                                    } catch (error) {
+                                      // Fallback for older browsers
+                                      const textArea = document.createElement('textarea');
+                                      textArea.value = fullPath;
+                                      textArea.style.position = 'fixed';
+                                      textArea.style.opacity = '0';
+                                      document.body.appendChild(textArea);
+                                      textArea.select();
+                                      try {
+                                        document.execCommand('copy');
+                                        toast.success('Full path copied to clipboard!');
+                                      } catch (err) {
+                                        toast.error('Failed to copy path');
+                                      }
+                                      document.body.removeChild(textArea);
+                                    }
+                                  }}
+                                  style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                                >
+                                  📋 Copy
+                                </button>
+                              </div>
+                              <small style={{ color: '#6c757d', display: 'block', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                                ✓ Files persist across container restarts
+                              </small>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td style={{ padding: '1rem' }}>
@@ -755,13 +846,18 @@ const MirrorOperations = () => {
                           </button>
                         )}
                         {op.status === 'success' && op.mirrorDestination && (
-                          <span 
-                            className="text-muted"
-                            style={{ fontSize: '0.9rem', padding: '0.25rem 0.5rem' }}
-                            title={`Mirror files stored at: ${op.mirrorDestination}`}
+                          <button 
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setShowMirrorLocation(prev => ({
+                                ...prev,
+                                [op.id]: !prev[op.id]
+                              }));
+                            }}
+                            title="Show/Hide mirror files location"
                           >
-                            📁 {op.mirrorDestination}
-                          </span>
+                            📁 {showMirrorLocation[op.id] ? 'Hide Location' : 'Location'}
+                          </button>
                         )}
                         <button 
                           className="btn btn-secondary"
@@ -1028,83 +1124,6 @@ const MirrorOperations = () => {
                 style={{ padding: '0.5rem 1rem' }}
               >
                 {uploading ? <div className="loading"></div> : '⚠️ Overwrite'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Path Browser Modal */}
-      {showPathBrowser && (
-        <div className="modal-overlay" onClick={() => setShowPathBrowser(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1003, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', maxWidth: '600px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', border: '1px solid #e0e0e0' }}>
-            <div className="modal-header" style={{ padding: '1.5rem 1.5rem 0 1.5rem', borderBottom: 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{ fontSize: '1.5rem' }}>📂</div>
-                <h3 style={{ margin: 0, color: '#007bff', fontSize: '1.25rem' }}>Select Mirror Destination Path</h3>
-              </div>
-            </div>
-            
-            <div className="modal-body" style={{ padding: '1.5rem', maxHeight: '400px', overflowY: 'auto' }}>
-              <p style={{ marginBottom: '1rem', color: '#495057' }}>
-                Choose a path where mirror files will be stored:
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {availablePaths.map((pathInfo) => (
-                  <div
-                    key={pathInfo.path}
-                    onClick={() => handlePathSelect(pathInfo.path)}
-                    style={{
-                      padding: '1rem',
-                      border: '2px solid',
-                      borderColor: pathInfo.available ? '#dee2e6' : '#ffc107',
-                      borderRadius: '8px',
-                      cursor: pathInfo.available ? 'pointer' : 'not-allowed',
-                      backgroundColor: pathInfo.available ? '#fff' : '#fffbf0',
-                      transition: 'all 0.2s ease',
-                      opacity: pathInfo.available ? 1 : 0.7
-                    }}
-                    onMouseEnter={(e) => {
-                      if (pathInfo.available) {
-                        e.currentTarget.style.borderColor = '#007bff';
-                        e.currentTarget.style.backgroundColor = '#f8f9ff';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (pathInfo.available) {
-                        e.currentTarget.style.borderColor = '#dee2e6';
-                        e.currentTarget.style.backgroundColor = '#fff';
-                      }
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <strong style={{ color: '#007bff' }}>{pathInfo.label || pathInfo.path}</strong>
-                      {pathInfo.available ? (
-                        <span style={{ color: '#28a745', fontSize: '0.9rem' }}>✅ Available</span>
-                      ) : (
-                        <span style={{ color: '#ffc107', fontSize: '0.9rem' }}>⚠️ Not Available</span>
-                      )}
-                    </div>
-                    <div style={{ color: '#6c757d', fontSize: '0.9rem', fontFamily: 'monospace', marginBottom: '0.25rem' }}>
-                      {pathInfo.path}
-                    </div>
-                    {pathInfo.description && (
-                      <div style={{ color: '#6c757d', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                        {pathInfo.description}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="modal-footer" style={{ padding: '0 1.5rem 1.5rem 1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button 
-                className="btn btn-outline-secondary" 
-                onClick={() => setShowPathBrowser(false)}
-                style={{ padding: '0.5rem 1rem' }}
-              >
-                Cancel
               </button>
             </div>
           </div>

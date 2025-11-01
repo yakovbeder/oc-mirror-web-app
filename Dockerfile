@@ -144,7 +144,7 @@ RUN mkdir -p ./catalog-data && \
 
 # Use existing 'node' user from official Node.js image (UID 1000)
 # Create directories and set ownership
-RUN mkdir -p /app/data /app/downloads && \
+RUN mkdir -p /app/data && \
     chown -R node:node /app
 
 # Add build metadata labels

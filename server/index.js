@@ -33,14 +33,13 @@ const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
-const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || './downloads';
 
 // Process tracking for operations
 const runningProcesses = new Map(); // operationId -> { pid, child }
 
 // Ensure directories exist
 async function ensureDirectories() {
-  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR, DOWNLOADS_DIR];
+  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR];
   for (const dir of dirs) {
     try {
       await fs.mkdir(dir, { recursive: true });
@@ -718,11 +717,6 @@ app.get('/api/system/paths', async (req, res) => {
         description: 'Persistent - create custom subdirectory for this operation' 
       },
       { 
-        path: '/app/downloads', 
-        label: 'Downloads', 
-        description: 'Persistent - mounted volume, shared with downloads' 
-      },
-      { 
         path: '/app/mirror', 
         label: 'Container Mirror (Ephemeral)', 
         description: '⚠️ Ephemeral - lost on container restart, not recommended' 
@@ -1387,7 +1381,7 @@ app.get('/api/operations/history', async (req, res) => {
 
 app.post('/api/operations/start', async (req, res) => {
   try {
-    const { configFile, mirrorDestination } = req.body;
+    const { configFile, mirrorDestinationSubdir } = req.body;
     const operationId = uuidv4();
     const configPath = path.join(CONFIGS_DIR, configFile);
     
@@ -1398,38 +1392,115 @@ app.post('/api/operations/start', async (req, res) => {
       return res.status(404).json({ error: 'Configuration file not found' });
     }
 
-    // Determine mirror destination path (default: /app/data/mirrors/default - persistent)
-    let mirrorPath = '/app/data/mirrors/default';  // Default persistent path
-    if (mirrorDestination && mirrorDestination.trim()) {
-      mirrorPath = mirrorDestination.trim();
+    // Use default cache directory (persistent via mounted volume)
+    const cacheDir = CACHE_DIR;
+
+    // Determine mirror destination path based on subdirectory name
+    const baseMirrorPath = '/app/data/mirrors';
+    let subdirName = 'default'; // Default subdirectory
+    
+    if (mirrorDestinationSubdir && mirrorDestinationSubdir.trim()) {
+      const subdirInput = mirrorDestinationSubdir.trim();
       
-      // Validate path format
-      if (!path.isAbsolute(mirrorPath)) {
+      // Validate subdirectory name (prevent path traversal and invalid characters)
+      if (subdirInput.includes('/') || subdirInput.includes('..') || subdirInput.includes('\\')) {
         return res.status(400).json({ 
-          error: 'Mirror destination must be an absolute path',
-          provided: mirrorPath
+          error: 'Subdirectory name cannot contain path separators or traversal characters',
+          provided: subdirInput,
+          help: 'Use a simple name like "odf" or "production" (no slashes or special characters)'
         });
       }
       
-      // Validate path exists or can be created
-      try {
-        await fs.mkdir(mirrorPath, { recursive: true });
-        // Check if writable
-        await fs.access(mirrorPath, fs.constants.W_OK);
-      } catch (error) {
+      // Validate subdirectory name is not empty after trim
+      if (!subdirInput || subdirInput.length === 0) {
+        return res.status(400).json({ error: 'Subdirectory name cannot be empty' });
+      }
+      
+      // Basic validation: alphanumeric, dash, underscore (common filesystem-safe characters)
+      if (!/^[a-zA-Z0-9_-]+$/.test(subdirInput)) {
         return res.status(400).json({ 
-          error: 'Cannot access or create mirror destination directory',
+          error: 'Subdirectory name contains invalid characters',
+          provided: subdirInput,
+          help: 'Use only letters, numbers, dashes (-), and underscores (_)'
+        });
+      }
+      
+      subdirName = subdirInput;
+    }
+    
+    // Construct full mirror path
+    const mirrorPath = path.join(baseMirrorPath, subdirName);
+    
+    // Ensure parent directory exists and is writable
+    try {
+      await fs.mkdir(baseMirrorPath, { recursive: true, mode: 0o777 });
+      // Try to write to verify permissions
+      const testFile = path.join(baseMirrorPath, '.test-write');
+      try {
+        await fs.writeFile(testFile, 'test', { flag: 'w' });
+        await fs.unlink(testFile);
+      } catch (writeError) {
+        // If write fails, directory exists but not writable
+        console.error(`Cannot write to base mirror directory ${baseMirrorPath}:`, writeError);
+        return res.status(500).json({ 
+          error: 'Base mirror directory is not writable',
+          path: baseMirrorPath,
+          details: writeError.message,
+          code: writeError.code
+        });
+      }
+    } catch (error) {
+      console.error(`Error accessing base mirror directory ${baseMirrorPath}:`, error);
+      return res.status(500).json({ 
+        error: 'Cannot access base mirror directory',
+        path: baseMirrorPath,
+        details: error.message,
+        code: error.code
+      });
+    }
+    
+    // Create directory if it doesn't exist with correct permissions
+    // Note: mkdir with recursive:true will succeed if directory already exists
+    try {
+      const dirExists = await fs.access(mirrorPath).then(() => true).catch(() => false);
+      
+      if (!dirExists) {
+        // Directory doesn't exist, create it
+        await fs.mkdir(mirrorPath, { recursive: true, mode: 0o775 });
+        console.log(`Created new mirror directory: ${mirrorPath}`);
+      } else {
+        // Directory exists, just verify it's writable
+        console.log(`Using existing mirror directory: ${mirrorPath}`);
+      }
+      
+      // Always verify write permissions (for both new and existing directories)
+      await fs.access(mirrorPath, fs.constants.W_OK);
+      
+      // Try a test write to ensure we can actually write files
+      const testFile = path.join(mirrorPath, '.test-write');
+      try {
+        await fs.writeFile(testFile, 'test', { flag: 'w' });
+        await fs.unlink(testFile);
+      } catch (writeError) {
+        console.error(`Cannot write to mirror directory ${mirrorPath}:`, writeError);
+        return res.status(500).json({ 
+          error: 'Mirror destination directory exists but is not writable',
           path: mirrorPath,
-          details: error.message
+          subdirectory: subdirName,
+          details: writeError.message,
+          code: writeError.code,
+          help: 'The directory exists but the container cannot write to it. Check permissions on the host.'
         });
       }
-    } else {
-      // Ensure default path exists
-      try {
-        await fs.mkdir(mirrorPath, { recursive: true });
-      } catch (error) {
-        console.warn(`Could not create default mirror directory ${mirrorPath}:`, error);
-      }
+    } catch (error) {
+      console.error(`Error creating/accessing mirror directory ${mirrorPath}:`, error);
+      return res.status(500).json({ 
+        error: 'Cannot create or access mirror destination directory',
+        path: mirrorPath,
+        subdirectory: subdirName,
+        details: error.message,
+        code: error.code
+      });
     }
 
     // Create operation record (store mirror path)
@@ -1443,7 +1514,15 @@ app.post('/api/operations/start', async (req, res) => {
       logs: []
     };
 
-    await saveOperation(operation);
+    try {
+      await saveOperation(operation);
+    } catch (error) {
+      console.error(`Error saving operation ${operationId}:`, error);
+      return res.status(500).json({ 
+        error: 'Failed to create operation record',
+        details: error.message
+      });
+    }
 
     // Start oc-mirror process with v2 using spawn for better process control
     const logFile = path.join(LOGS_DIR, `${operationId}.log`);
@@ -1469,7 +1548,7 @@ app.post('/api/operations/start', async (req, res) => {
       '--config', configPath,
       '--dest-tls-verify=false',
       '--src-tls-verify=false',
-      '--cache-dir', CACHE_DIR,
+      '--cache-dir', cacheDir,  // Use default cache directory (persistent via mounted volume)
       '--authfile', '/app/pull-secret.json',
       mirrorUrl  // Use custom or default path
     ], {

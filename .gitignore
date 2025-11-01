@@ -65,6 +65,9 @@ jspm_packages/
 # dotenv environment variables file
 .env
 
+# Runtime configuration files
+.user_storage_path
+
 # Sensitive files
 pull-secret/pull-secret.json
 pull-secret/*.json
@@ -78,10 +81,12 @@ data/configs/*
 data/operations/*
 data/logs/*
 data/cache/*
+data/mirrors/*
 !data/configs/.gitkeep
 !data/operations/.gitkeep
 !data/logs/.gitkeep
 !data/cache/.gitkeep
+!data/mirrors/.gitkeep
 !data/settings.json
 
 # Container images
