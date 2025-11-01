@@ -44,6 +44,11 @@ oc-mirror-web-app/
 │   ├── basic-config.yaml
 │   └── advanced-config.yaml
 ├── data/                  # Runtime data (created automatically)
+│   ├── configs/           # Mirror configurations
+│   ├── operations/        # Operation history
+│   ├── logs/             # Application logs
+│   ├── cache/            # oc-mirror v2 cache
+│   └── mirrors/          # Persistent mirror archives
 ├── package.json           # Dependencies and scripts
 ├── Dockerfile            # Container configuration
 ├── container-run.sh      # Easy container runner (Podman)
@@ -79,6 +84,10 @@ oc-mirror-web-app/
 - **Log Streaming**: Real-time log output with syntax highlighting
 - **Operation Control**: Start, stop, and delete operations
 - **Operation History**: Complete history of all operations
+- **Persistent Mirror Storage**: Mirror archives saved to host filesystem, survive container restarts
+- **Mirror Location Display**: Full host path displayed with copy-to-clipboard functionality
+- **Custom Subdirectories**: Optional subdirectory specification for organized mirror storage
+- **Toast Notifications**: Non-intrusive completion notifications (no loops)
 
 #### 4. History & Analytics
 - **Operation Filtering**: Filter by status (success, failed, running, stopped)
@@ -174,10 +183,11 @@ npm run server
 ### 🔒 Security Features
 
 - **Credential Management**: Secure storage of registry credentials
-- **File Permissions**: Proper file system permissions
-- **Input Validation**: YAML validation and sanitization
+- **File Permissions**: Proper file system permissions with automatic permission fixing
+- **Input Validation**: YAML validation and sanitization, path traversal prevention
 - **Error Handling**: Comprehensive error handling and logging
-- **Non-root Execution**: Container runs as non-root user
+- **Non-root Execution**: Container runs as non-root user (node:1000)
+- **Docker HEALTHCHECK**: Container health monitoring for orchestration
 
 ### 📈 Monitoring & Observability
 
@@ -211,9 +221,11 @@ npm run server
 ### 3. Execution
 1. Go to Mirror Operations tab
 2. Select your configuration
-3. Click Start Operation
-4. Monitor progress in real-time
-5. Review results and logs
+3. Optionally specify a mirror destination subdirectory (defaults to `default`)
+4. Click Start Operation
+5. Monitor progress in real-time
+6. After completion, view mirror location and copy path to clipboard
+7. Review results and logs
 
 ### 4. Management
 1. Check operation history
@@ -228,6 +240,9 @@ npm run server
 - Includes Node.js, oc, and oc-mirror v2
 - Consistent environment across platforms
 - Multi-architecture support (AMD64, ARM64)
+- Optimized Dockerfile with slim base images
+- Reduced image size (~2.4GB reduction by optimizing catalog data)
+- Docker format support for HEALTHCHECK
 
 ### 🔒 Security
 - Non-root user execution
@@ -246,6 +261,11 @@ npm run server
 - Version control for dependencies
 - Consistent behavior across environments
 - Enhanced catalog processing with multi-format support
+- Graceful container shutdown with proper cleanup
+- Parallel catalog fetching for faster builds
+- Automatic catalog image cleanup to save disk space
+- Incremental catalog updates (7-day freshness check)
+- Persistent mirror storage (no downloads needed)
 
 
 

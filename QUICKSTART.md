@@ -58,8 +58,11 @@ The script automatically detects whether you have Podman and uses it.
 1. Go to **Mirror Operations** tab
 2. Select your configuration from the dropdown
 3. **Optional**: Delete unwanted configurations using the **🗑️ Delete** button
-4. Click **Start Operation**
-5. Monitor progress in real-time
+4. **Optional**: Specify a mirror destination subdirectory (defaults to `default` if empty)
+5. Click **Start Operation**
+6. Monitor progress in real-time
+7. After completion, click **📁 Location** button to see where mirror files are saved
+8. Use **📋 Copy** button to copy the full host path to clipboard
 
 ## 🐳 Container Runtime Options
 
@@ -100,7 +103,7 @@ The containerized version includes:
 - ✅ **Auto-correction features** (automatically fixes invalid configurations)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
-- ✅ **Version 3.2 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling, smart validation, OCP 4.20 support, optimized catalog fetching)
+- ✅ **Version 3.2 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling, smart validation, OCP 4.20 support, optimized catalog fetching, persistent mirror storage, Docker HEALTHCHECK, graceful shutdown)
 
 ## 🎯 Smart Validation Features
 
@@ -162,9 +165,10 @@ platform:
 ./container-run.sh --engine
 
 # Build with catalog fetching (complete data, slower build)
+# Note: Catalogs are cached - only fetches if older than 7 days
 ./container-run.sh --fetch-catalogs
 
-# Build without fetching catalogs (fast build, uses fallback data)
+# Build without fetching catalogs (fast build, uses existing catalog data if available)
 ./container-run.sh
 ```
 
@@ -193,6 +197,9 @@ Your data is automatically persisted in the `data/` directory:
 - **Operations**: `data/operations/`
 - **Logs**: `data/logs/`
 - **Cache**: `data/cache/`
+- **Mirrors**: `data/mirrors/` - Mirror archives (survive container restarts)
+  - Default location: `data/mirrors/default/`
+  - Custom subdirectories supported (e.g., `data/mirrors/odf/`)
 
 ## 🔐 Pull Secret (Optional)
 
@@ -255,7 +262,7 @@ sudo chmod -R 755 data/
 sudo chmod -R 777 data/
 ```
 
-**Why this happens**: The container runs as the `nodejs` user (UID 1001), but the data directories might be owned by `root` or have insufficient permissions.
+**Why this happens**: The container runs as the `node` user (UID 1000), but the data directories might be owned by `root` or have insufficient permissions. The `container-run.sh` script automatically attempts to fix permissions, but manual intervention may be required in some cases.
 
 **Verification**: After fixing permissions, try saving a configuration again. The popup should show "Configuration saved successfully".
 

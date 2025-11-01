@@ -151,6 +151,9 @@ The container now includes:
 - **Pre-fetched operator catalogs** for OCP versions 4.16-4.20 (faster operator selection)
 - **Multi-format catalog processing** for complete operator coverage
 - **Automatic architecture detection** and display in system status
+- **Persistent mirror storage** - mirror archives survive container restarts
+- **Graceful container shutdown** - proper cleanup on stop
+- **Docker HEALTHCHECK** support for container orchestration
 
 ### Operator Catalog Fetching
 
@@ -175,6 +178,9 @@ The application now pre-fetches operator catalogs for all supported OCP versions
 - **Multi-format support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
 - **Robust extraction**: Gracefully handles non-standard operator structures
 - **Complete coverage**: Processes all operators including edge cases like lightspeed-operator
+- **Parallel processing**: Concurrent catalog fetching for faster build times
+- **Automatic cleanup**: Container images cleaned up after extraction to save disk space
+- **Incremental updates**: Skips fetching if catalogs are already fresh (7-day freshness check)
 
 ### Alternative: Quay.io Images (quay-run.sh)
 
@@ -245,7 +251,7 @@ chmod +x quay-run.sh
 - **Input Validation**: Comprehensive validation of all user inputs and configuration parameters
 - **File Sanitization**: Secure file handling and processing with path validation
 - **Error Isolation**: Operations are isolated to prevent system impact
-- **Non-root Container**: Application runs as non-root user (nodejs:1001) for enhanced security
+- **Non-root Container**: Application runs as non-root user (node:1000) for enhanced security
 - **Container Security**: Multi-stage builds with minimal attack surface
 - **Network Security**: Secure communication between frontend and backend components
 - **Data Protection**: Secure handling of pull secrets and sensitive configuration data
@@ -270,8 +276,8 @@ oc-mirror-web-app/
 │   ├── configs/           # Mirror configurations
 │   ├── operations/        # Operation history
 │   ├── logs/             # Application logs
-│   └── cache/            # oc-mirror v2 cache
-├── downloads/             # Download directory for generated files
+│   ├── cache/            # oc-mirror v2 cache
+│   └── mirrors/          # Persistent mirror archives (survives restarts)
 ├── examples/              # Configuration examples
 ├── docs/                  # Documentation and screenshots
 ├── public/                # Static assets
@@ -292,29 +298,37 @@ oc-mirror-web-app/
 
 [⬆️ Back to Top](#-table-of-contents)
 
-## 📥 Download System
+## 📁 Persistent Mirror Storage
 
-### Dynamic Progress Tracking
-The application features an advanced download system with real-time progress tracking:
+### Mirror Archive Persistence
+Mirror operations create persistent archives that survive container restarts:
 
-- **Real-time Progress Bar**: Visual progress indicator showing archive creation progress (0% → 95%)
-- **Smart Modal Management**: Progress modal automatically closes when archive creation completes
-- **Polling-based Updates**: Robust progress tracking using polling instead of SSE for better reliability
-- **Error Recovery**: Graceful handling of download failures and network issues
-- **Success Notifications**: Clear user feedback when downloads are ready
+- **Default Storage**: Mirror archives are saved to `data/mirrors/default/` by default
+- **Custom Subdirectories**: Optionally specify a subdirectory name (e.g., `odf`, `production`)
+- **Persistent Location**: Files are stored on the host filesystem and persist across container restarts
+- **Location Display**: After operation completion, the UI shows the full host path to mirror files
+- **Copy to Clipboard**: One-click copy of the mirror path for easy terminal access
 
-### Download Process
-1. **Archive Creation**: System creates a compressed archive of operation files
-2. **Progress Tracking**: Real-time progress updates via polling
-3. **Modal Closure**: Progress modal closes at 95% completion
-4. **Browser Download**: Archive automatically starts downloading in the browser
-5. **Success Notification**: User receives confirmation of successful download
+### Storage Structure
+```
+data/mirrors/
+├── default/          # Default mirror location
+├── odf/             # Custom subdirectory example
+└── production/      # Another custom subdirectory
+```
 
-### Technical Implementation
-- **Backend**: Uses `child_process.spawn` with `tar` for efficient archive creation
-- **Frontend**: Polling-based progress updates with comprehensive error handling
-- **Progress Storage**: Global progress tracking with automatic cleanup
-- **Modal Management**: Multiple exit conditions ensure proper modal closure
+### Using Custom Mirror Locations
+When starting a mirror operation:
+1. **Default**: Leave the subdirectory field empty → saves to `data/mirrors/default/`
+2. **Custom**: Enter a subdirectory name (e.g., `odf`) → saves to `data/mirrors/odf/`
+3. **Validation**: Subdirectory names are validated (alphanumeric, dashes, underscores only)
+4. **Auto-creation**: Directories are created automatically with correct permissions
+
+### Benefits
+- **No Downloads Needed**: Mirror files are already on your host filesystem
+- **Survives Restarts**: All mirror archives persist across container restarts
+- **Easy Access**: Direct access to mirror files without browser downloads
+- **Organized Storage**: Multiple mirror operations can use different subdirectories
 
 [⬆️ Back to Top](#-table-of-contents)
 
@@ -388,9 +402,10 @@ mirror:
 - Operation cancellation
 - **YAML Upload Section**: Clean inline interface for uploading existing ImageSetConfiguration files
 - **Configuration Management**: Delete unwanted configuration files with professional confirmation dialogs
-- **Dynamic Download Progress**: Real-time progress bar for archive creation and download
-- **Smart Modal Management**: Automatic modal closure with success notifications
-- **Robust Error Handling**: Graceful handling of download failures and edge cases
+- **Persistent Mirror Storage**: Mirror archives saved to host filesystem, survive container restarts
+- **Mirror Location Display**: Shows full host path to mirror files with copy-to-clipboard functionality
+- **Toast Notifications**: Non-intrusive notifications for operation completion
+- **Robust Error Handling**: Graceful handling of operation failures and edge cases
 - **Auto-scroll Navigation**: Seamless user flow from upload to operation execution
 
 ### History
@@ -431,9 +446,8 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 - `POST /api/config/upload` - Upload YAML configuration files with validation
 - `DELETE /api/config/delete/:filename` - Delete configuration files with security validation
 - `GET /api/operations` - List operations
-- `POST /api/operations/start` - Start operation
-- `GET /api/operations/:id/download` - Download operation archive
-- `GET /api/operations/:id/download-progress` - Get download progress (polling endpoint)
+- `POST /api/operations/start` - Start operation (with optional mirrorDestinationSubdir parameter)
+- `GET /api/system/paths` - Get available system paths
 - `GET /api/catalogs` - Get available operator catalogs
 - `GET /api/operators` - Get available operators (dynamic discovery)
 - `GET /api/operator-channels/:operator` - Get channels for specific operator (dynamic)
@@ -472,7 +486,7 @@ sudo chmod -R 755 data/
 sudo chmod -R 777 data/
 ```
 
-**Why this happens**: The container runs as the `nodejs` user (UID 1001), but the data directories might be owned by `root` or have insufficient permissions.
+**Why this happens**: The container runs as the `node` user (UID 1000), but the data directories might be owned by `root` or have insufficient permissions. The `container-run.sh` script attempts to fix permissions automatically, but manual intervention may be required in some cases.
 
 **Verification**: After fixing permissions, try saving a configuration again. The popup should show "Configuration saved successfully".
 
