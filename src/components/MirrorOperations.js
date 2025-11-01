@@ -70,9 +70,9 @@ const MirrorOperations = () => {
       response.data.forEach(op => {
         if (op.status === 'success' && op.mirrorDestination && !notifiedOperations.has(op.id)) {
           const prevOp = previousOps.find(p => p.id === op.id);
-          // If operation just completed (was running or didn't exist before)
-          if (!prevOp || prevOp.status === 'running') {
-            const hostPath = op.mirrorDestination.replace('/app/data', 'data').replace('/app/downloads', 'downloads');
+          // Only notify if operation status changed from 'running' to 'success'
+          // Don't notify if prevOp doesn't exist (means it was already successful when page loaded)
+          if (prevOp && prevOp.status === 'running' && op.status === 'success') {
             toast.success(
               `✅ Mirror Operation Completed!`,
               { duration: 5000 }
@@ -757,68 +757,6 @@ const MirrorOperations = () => {
                         <strong>{op.name}</strong>
                         <br />
                         <small className="text-muted">{op.configFile}</small>
-                        {op.status === 'success' && op.mirrorDestination && showMirrorLocation[op.id] && (
-                          <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.85rem' }}>
-                            <div style={{ marginBottom: '0.75rem' }}>
-                              <strong style={{ color: '#155724', display: 'block', marginBottom: '0.5rem' }}>📁 Mirror Files Location</strong>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                <code style={{ 
-                                  backgroundColor: '#fff', 
-                                  padding: '0.5rem', 
-                                  borderRadius: '4px',
-                                  border: '1px solid #ced4da',
-                                  flex: '1 1 300px',
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.9rem',
-                                  wordBreak: 'break-all',
-                                  display: 'block'
-                                }}>
-                                  {(() => {
-                                    const hostPath = op.mirrorDestination.replace('/app/data', 'data').replace('/app/downloads', 'downloads');
-                                    // Construct full absolute path - project is typically in /home/ybeder/oc-mirror-web-app
-                                    const projectRoot = '/home/ybeder/oc-mirror-web-app';
-                                    return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
-                                  })()}
-                                </code>
-                                <button
-                                  className="btn btn-sm btn-outline-primary"
-                                  onClick={async () => {
-                                    const hostPath = op.mirrorDestination.replace('/app/data', 'data').replace('/app/downloads', 'downloads');
-                                    // Construct full absolute path - project is in /home/ybeder/oc-mirror-web-app
-                                    const projectRoot = '/home/ybeder/oc-mirror-web-app';
-                                    const fullPath = `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
-                                    
-                                    try {
-                                      await navigator.clipboard.writeText(fullPath);
-                                      toast.success('Full path copied to clipboard!');
-                                    } catch (error) {
-                                      // Fallback for older browsers
-                                      const textArea = document.createElement('textarea');
-                                      textArea.value = fullPath;
-                                      textArea.style.position = 'fixed';
-                                      textArea.style.opacity = '0';
-                                      document.body.appendChild(textArea);
-                                      textArea.select();
-                                      try {
-                                        document.execCommand('copy');
-                                        toast.success('Full path copied to clipboard!');
-                                      } catch (err) {
-                                        toast.error('Failed to copy path');
-                                      }
-                                      document.body.removeChild(textArea);
-                                    }
-                                  }}
-                                  style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                                >
-                                  📋 Copy
-                                </button>
-                              </div>
-                              <small style={{ color: '#6c757d', display: 'block', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                                ✓ Files persist across container restarts
-                              </small>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </td>
                     <td style={{ padding: '1rem' }}>
@@ -876,6 +814,66 @@ const MirrorOperations = () => {
                           🗑️ Delete
                         </button>
                       </div>
+                      {op.status === 'success' && op.mirrorDestination && showMirrorLocation[op.id] && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <strong style={{ color: '#155724', whiteSpace: 'nowrap' }}>📁 Mirror Files Location:</strong>
+                            <code style={{ 
+                              backgroundColor: '#fff', 
+                              padding: '0.5rem 0.75rem', 
+                              borderRadius: '4px',
+                              border: '1px solid #ced4da',
+                              flex: '1 1 400px',
+                              fontFamily: 'monospace',
+                              fontSize: '0.9rem',
+                              wordBreak: 'break-all',
+                              minWidth: '200px'
+                            }}>
+                              {(() => {
+                                const hostPath = op.mirrorDestination.replace('/app/data', 'data');
+                                // Construct full absolute path - project is typically in /home/ybeder/oc-mirror-web-app
+                                const projectRoot = '/home/ybeder/oc-mirror-web-app';
+                                return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+                              })()}
+                            </code>
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={async () => {
+                                const hostPath = op.mirrorDestination.replace('/app/data', 'data');
+                                // Construct full absolute path - project is in /home/ybeder/oc-mirror-web-app
+                                const projectRoot = '/home/ybeder/oc-mirror-web-app';
+                                const fullPath = `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+                                
+                                try {
+                                  await navigator.clipboard.writeText(fullPath);
+                                  toast.success('Full path copied to clipboard!');
+                                } catch (error) {
+                                  // Fallback for older browsers
+                                  const textArea = document.createElement('textarea');
+                                  textArea.value = fullPath;
+                                  textArea.style.position = 'fixed';
+                                  textArea.style.opacity = '0';
+                                  document.body.appendChild(textArea);
+                                  textArea.select();
+                                  try {
+                                    document.execCommand('copy');
+                                    toast.success('Full path copied to clipboard!');
+                                  } catch (err) {
+                                    toast.error('Failed to copy path');
+                                  }
+                                  document.body.removeChild(textArea);
+                                }
+                              }}
+                              style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                            >
+                              📋 Copy
+                            </button>
+                            <small style={{ color: '#6c757d', fontSize: '0.8rem', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                              ✓ Files persist across container restarts
+                            </small>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
