@@ -96,7 +96,7 @@ cd oc-mirror-web-app
 > ```
 > 
 > **Why is this important?**
-> - The `--fetch-catalogs` flag downloads real operator catalog data for all OCP versions (4.15-4.19)
+> - The `--fetch-catalogs` flag downloads real operator catalog data for all OCP versions (4.16-4.20)
 > - **Without this flag, the application will not work properly** - it requires the catalog data to function
 > - This ensures you have access to the complete list of operators and their channels
 > - Subsequent runs can use `./container-run.sh` (without the flag) for faster startup
@@ -148,13 +148,13 @@ The container now includes:
 - **Enhanced logging** with configurable log levels
 - **Improved caching** for OC Mirror operations
 - **Better error handling** and health checks
-- **Pre-fetched operator catalogs** for OCP versions 4.15-4.19 (faster operator selection)
+- **Pre-fetched operator catalogs** for OCP versions 4.16-4.20 (faster operator selection)
 - **Multi-format catalog processing** for complete operator coverage
 - **Automatic architecture detection** and display in system status
 
 ### Operator Catalog Fetching
 
-The application now pre-fetches operator catalogs for all supported OCP versions (4.15-4.19) during the build process. This provides:
+The application now pre-fetches operator catalogs for all supported OCP versions (4.16-4.20) during the build process. This provides:
 
 - **Faster operator selection** - No need to query catalogs at runtime
 - **Version-specific channels** - Each OCP version has its own operator catalog
@@ -497,11 +497,11 @@ For issues and questions:
 - **oc-mirror v2.x**: ✅ Fully supported
 
 ### Supported OpenShift Versions
-- **OCP 4.15**: ✅ Supported
-- **OCP 4.16**: ✅ Supported  
+- **OCP 4.16**: ✅ Supported
 - **OCP 4.17**: ✅ Supported
 - **OCP 4.18**: ✅ Supported
 - **OCP 4.19**: ✅ Supported
+- **OCP 4.20**: ✅ Supported
 
 ### Deployment Options
 - **Local Build**: `./container-run.sh` - Build and run locally

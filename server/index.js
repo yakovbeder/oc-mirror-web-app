@@ -276,7 +276,7 @@ async function queryOperatorCatalog(catalogUrl) {
     if (catalogData) {
       // Extract catalog type and version from URL
       const catalogType = getCatalogNameFromUrl(catalogUrl);
-      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
       const key = `${catalogType}:${catalogVersion}`;
       
       if (catalogData.operators[key]) {
@@ -285,13 +285,12 @@ async function queryOperatorCatalog(catalogUrl) {
       }
     }
     
-    // Fallback to comprehensive static data
-    console.log(`Using comprehensive static data for catalog: ${catalogUrl}`);
-    return getComprehensiveStaticOperators(catalogUrl);
+    // Catalog data should always be available - if not, there's a configuration issue
+    console.error(`[ERROR] Catalog data not found for ${catalogUrl}. Catalog data should be pre-fetched during build.`);
+    return [];
   } catch (error) {
     console.error(`Error querying catalog ${catalogUrl}:`, error);
-    // Return static fallback data for common operators
-    return getStaticOperators(catalogUrl);
+    return [];
   }
 }
 
@@ -299,7 +298,7 @@ async function queryOperatorChannels(catalogUrl, operatorName) {
   try {
     // Extract catalog type and version from URL
     const catalogType = getCatalogNameFromUrl(catalogUrl);
-    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
     
     // First, try to read the actual catalog data from the catalog-data directory
     const actualChannels = await getActualChannelsFromCatalog(catalogType, catalogVersion, operatorName);
@@ -319,13 +318,12 @@ async function queryOperatorChannels(catalogUrl, operatorName) {
       }
     }
     
-    // Final fallback to comprehensive static data
-    console.log(`Using comprehensive static data for ${operatorName} from ${catalogVersion} catalog`);
-    return getComprehensiveStaticChannels(operatorName, catalogVersion);
+    // Catalog data should always be available - if not, there's a configuration issue
+    console.error(`[ERROR] Channel data not found for ${operatorName} in ${catalogUrl}. Catalog data should be pre-fetched during build.`);
+    return [];
   } catch (error) {
     console.error(`Error querying channels for ${operatorName} from ${catalogUrl}:`, error);
-    // Return static fallback data for common channels
-    return getStaticChannels(operatorName);
+    return [];
   }
 }
 
@@ -459,459 +457,6 @@ async function getActualChannelsFromCatalog(catalogType, catalogVersion, operato
   }
 }
 
-// Comprehensive static data based on actual Red Hat catalogs
-function getComprehensiveStaticOperators(catalogUrl) {
-  const comprehensiveData = {
-    'registry.redhat.io/redhat/redhat-operator-index': [
-      { name: '3scale-operator' },
-      { name: 'advanced-cluster-management' },
-      { name: 'amq-broker-rhel8' },
-      { name: 'amq-online' },
-      { name: 'amq-streams' },
-      { name: 'ansible-automation-platform-operator' },
-      { name: 'ansible-cloud-addons-operator' },
-      { name: 'apicast-operator' },
-      { name: 'authorino-operator' },
-      { name: 'aws-efs-csi-driver-operator' },
-      { name: 'aws-load-balancer-operator' },
-      { name: 'cert-manager' },
-      { name: 'cluster-logging' },
-      { name: 'elasticsearch-operator' },
-      { name: 'file-integrity-operator' },
-      { name: 'gatekeeper-operator' },
-      { name: 'jaeger-product' },
-      { name: 'kiali-ossm' },
-      { name: 'local-storage-operator' },
-      { name: 'node-problem-detector' },
-      { name: 'odf-operator' },
-      { name: 'openshift-gitops-operator' },
-      { name: 'quay-operator' },
-      { name: 'red-hat-camel-k' },
-      { name: 'redhat-oadp-operator' },
-      { name: 'service-mesh-operator' },
-      { name: 'skupper-operator' },
-      { name: 'submariner' },
-      { name: 'tempo-product' },
-      { name: 'vertical-pod-autoscaler' }
-    ],
-    'registry.redhat.io/redhat/certified-operator-index': [
-      { name: '3scale-operator' },
-      { name: 'amq-broker-rhel8' },
-      { name: 'amq-online' },
-      { name: 'amq-streams' },
-      { name: 'apicast-operator' },
-      { name: 'aws-load-balancer-operator' },
-      { name: 'couchbase-enterprise-certified' },
-      { name: 'crunchy-postgres-operator' },
-      { name: 'mongodb-enterprise' },
-      { name: 'nginx-ingress-operator' },
-      { name: 'postgresql' },
-      { name: 'redis-enterprise' },
-      { name: 'splunk-operator' },
-      { name: 'strimzi-kafka-operator' }
-    ],
-    'registry.redhat.io/redhat/community-operator-index': [
-      { name: '3scale-operator' },
-      { name: 'amq-broker' },
-      { name: 'amq-streams' },
-      { name: 'apicast-operator' },
-      { name: 'couchbase-enterprise' },
-      { name: 'mongodb-enterprise' },
-      { name: 'nginx-ingress-operator' },
-      { name: 'postgresql' },
-      { name: 'redis-enterprise' },
-      { name: 'strimzi-kafka-operator' }
-    ]
-  };
-  
-  return comprehensiveData[catalogUrl] || [];
-}
-
-// Static fallback data for when dynamic queries fail
-function getStaticOperators(catalogUrl) {
-  return getComprehensiveStaticOperators(catalogUrl);
-}
-
-// Comprehensive static channels based on actual Red Hat operator channels
-// Data extracted from real catalog.json files using the file-based catalog method
-function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') {
-  const comprehensiveChannels = {
-    'advanced-cluster-management': (catalogVersion) => {
-      // Version-specific channels for ACM operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.10' }
-        ],
-        'v4.16': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.10' }
-        ],
-        'v4.17': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.11' }
-        ],
-        'v4.18': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.12' }
-        ],
-        'v4.19': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.13' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'amq-streams': [
-      { name: 'amq-streams-2.6.x' },  // Latest channel
-      { name: 'amq-streams-2.5.x' },
-      { name: 'amq-streams-2.4.x' },
-      { name: 'amq-streams-2.3.x' },
-      { name: 'amq-streams-2.2.x' }
-    ],
-    'amq-broker-rhel8': [
-      { name: '7.12.x' },  // Latest channel
-      { name: '7.11.x' },
-      { name: '7.10.x' },
-      { name: '7.9.x' }
-    ],
-    'amq-online': [
-      { name: '1.10.x' },
-      { name: '1.9.x' },
-      { name: '1.8.x' }
-    ],
-    'ansible-automation-platform-operator': (catalogVersion) => {
-      // Version-specific channels for Ansible Automation Platform operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.16': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.17': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.18': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.19': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.5' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'cert-manager': [
-      { name: 'stable-v1.14' },  // Latest channel
-      { name: 'stable-v1.13' },
-      { name: 'stable-v1.12' },
-      { name: 'stable-v1.11' },
-      { name: 'stable-v1.10' }
-    ],
-    'cluster-logging': [
-      { name: 'stable-5.9' },  // Latest channel
-      { name: 'stable-5.8' },
-      { name: 'stable-5.7' },
-      { name: 'stable-5.6' },
-      { name: 'stable-5.5' }
-    ],
-    'elasticsearch-operator': [
-      { name: 'stable-5.9' },  // Latest channel
-      { name: 'stable-5.8' },
-      { name: 'stable-5.7' },
-      { name: 'stable-5.6' },
-      { name: 'stable-5.5' }
-    ],
-    'file-integrity-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'gatekeeper-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'jaeger-product': [
-      { name: 'stable' },
-      { name: 'stable-1.47' },
-      { name: 'stable-1.46' }
-    ],
-    'kiali-ossm': [
-      { name: 'stable' },
-      { name: 'stable-1.67' },
-      { name: 'stable-1.66' }
-    ],
-    'local-storage-operator': (catalogVersion) => {
-      // Local storage operator uses the same channels across all versions
-      return [
-        { name: 'stable' },  // Default channel
-        { name: 'stable-4.15' },
-        { name: 'stable-4.14' }
-      ];
-    },
-    'node-problem-detector': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'odf-operator': (catalogVersion) => {
-      // Version-specific channels for ODF operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'stable-4.15' },  // Latest channel (default)
-          { name: 'stable-4.14' }
-        ],
-        'v4.16': [
-          { name: 'stable-4.16' },  // Latest channel (default)
-          { name: 'stable-4.15' }
-        ],
-        'v4.17': [
-          { name: 'stable-4.17' },  // Latest channel (default)
-          { name: 'stable-4.16' }
-        ],
-        'v4.18': [
-          { name: 'stable-4.18' },  // Latest channel (default)
-          { name: 'stable-4.17' }
-        ],
-        'v4.19': [
-          { name: 'stable-4.18' },  // Latest channel (default)
-          { name: 'stable-4.18' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'openshift-gitops-operator': [
-      { name: 'stable-1.11' },  // Latest channel
-      { name: 'stable-1.10' },
-      { name: 'stable-1.9' },
-      { name: 'stable-1.8' },
-      { name: 'stable-1.7' }
-    ],
-    'quay-operator': [
-      { name: 'stable-3.9' },  // Latest channel
-      { name: 'stable-3.8' },
-      { name: 'stable-3.7' },
-      { name: 'stable-3.6' },
-      { name: 'stable-3.5' }
-    ],
-    'red-hat-camel-k': [
-      { name: 'stable' },
-      { name: 'stable-1.15' },
-      { name: 'stable-1.14' }
-    ],
-    'redhat-oadp-operator': [
-      { name: 'stable-1.4' },  // Latest channel
-      { name: 'stable-1.3' },
-      { name: 'stable-1.2' },
-      { name: 'stable-1.1' },
-      { name: 'stable-1.0' }
-    ],
-    'rhbk-operator': (catalogVersion) => {
-      // Version-specific channels for RHBK operator
-      if (catalogVersion === 'v4.18') {
-        return [
-          { name: 'stable-v26.2' },  // Latest channel (default)
-          { name: 'stable-v26.0' },
-          { name: 'stable-v26' },
-          { name: 'stable-v24.0' },
-          { name: 'stable-v24' },
-          { name: 'stable-v22.0' },
-          { name: 'stable-v22' }
-        ];
-      } else {
-        // For v4.15, v4.16, v4.17, v4.19 - only stable-v22 is available
-        return [
-          { name: 'stable-v22' },  // Only available channel
-          { name: 'stable-v22.0' }
-        ];
-      }
-    },
-    'service-mesh-operator': [
-      { name: 'stable-2.6' },  // Latest channel
-      { name: 'stable-2.5' },
-      { name: 'stable-2.4' },
-      { name: 'stable-2.3' },
-      { name: 'stable-2.2' }
-    ],
-    'skupper-operator': [
-      { name: 'stable' },
-      { name: 'stable-1.4' },
-      { name: 'stable-1.3' }
-    ],
-    'submariner': [
-      { name: 'stable-0.16' },
-      { name: 'stable-0.15' },
-      { name: 'stable-0.14' },
-      { name: 'stable-0.13' }
-    ],
-    '3scale-operator': (catalogVersion) => {
-      // Version-specific channels for 3scale operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.16': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.17': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.18': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.19': [
-          { name: 'threescale-2.13' },  // Latest channel (default)
-          { name: 'threescale-mas' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'amq-broker-rhel8': [
-      { name: '7.12.x' },  // Latest channel
-      { name: '7.11.x' },
-      { name: '7.10.x' },
-      { name: '7.9.x' }
-    ],
-    'amq-online': [
-      { name: '1.10.x' },
-      { name: '1.9.x' },
-      { name: '1.8.x' }
-    ],
-    'apicast-operator': [
-      { name: '3scale-2.13' },
-      { name: '3scale-2.12' },
-      { name: '3scale-2.11' }
-    ],
-    'aws-load-balancer-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'couchbase-enterprise-certified': [
-      { name: 'stable' },
-      { name: 'stable-2.3' }
-    ],
-    'crunchy-postgres-operator': [
-      { name: 'stable' },
-      { name: 'stable-5.4' }
-    ],
-    'mongodb-enterprise': [
-      { name: 'stable' },
-      { name: 'stable-1.20' }
-    ],
-    'nginx-ingress-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.6' }
-    ],
-    'postgresql': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'redis-enterprise': [
-      { name: 'stable' },
-      { name: 'stable-6.2' }
-    ],
-    'splunk-operator': [
-      { name: 'stable' },
-      { name: 'stable-1.0' }
-    ],
-    'strimzi-kafka-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.36' }
-    ],
-    'tempo-product': [
-      { name: 'stable' },
-      { name: 'stable-2.3' }
-    ],
-    'vertical-pod-autoscaler': [
-      { name: 'stable' },
-      { name: 'stable-4.15' }
-    ],
-    'node-observability-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'file-integrity-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'gatekeeper-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'local-storage-operator': [
-      { name: 'stable' },
-      { name: 'stable-4.15' },
-      { name: 'stable-4.14' }
-    ],
-    'node-problem-detector': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'aws-efs-csi-driver-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'aws-load-balancer-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'authorino-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'ansible-cloud-addons-operator': (catalogVersion) => {
-      // Version-specific channels for Ansible Cloud Addons operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.4-cluster-scoped' }
-        ],
-        'v4.16': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.4-cluster-scoped' }
-        ],
-        'v4.17': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.4-cluster-scoped' }
-        ],
-        'v4.18': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.5-cluster-scoped' }
-        ],
-        'v4.19': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.5-cluster-scoped' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'apicast-operator': [
-      { name: '3scale-2.13' },
-      { name: '3scale-2.12' },
-      { name: '3scale-2.11' }
-    ]
-  };
-  
-  const channels = comprehensiveChannels[operatorName];
-  
-  // Handle function-based channel configurations (like RHBK operator)
-  if (typeof channels === 'function') {
-    return channels(catalogVersion);
-  }
-  
-  return channels || [];
-}
-
-function getStaticChannels(operatorName) {
-  return getComprehensiveStaticChannels(operatorName, 'v4.15');
-}
 
 // Cache for dynamic data
 const operatorCache = {
@@ -1258,7 +803,7 @@ app.get('/api/operators', async (req, res) => {
       if (catalogData) {
         // Extract catalog type and version from URL
         const catalogType = getCatalogNameFromUrl(catalog);
-        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.15';
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1518,7 +1063,7 @@ app.get('/api/operators/:operator/versions', async (req, res) => {
       // If catalog is provided, extract catalog type and version
       if (catalog) {
         const catalogType = getCatalogNameFromUrl(catalog);
-        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.15';
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1596,7 +1141,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       // If catalogUrl is provided, extract catalog type and version
       if (catalogUrl) {
         const catalogType = getCatalogNameFromUrl(catalogUrl);
-        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];

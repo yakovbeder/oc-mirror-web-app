@@ -27,7 +27,7 @@ This is the **easiest and most reliable** way to run the application. No host de
 > ```
 > 
 > **Why is this important?**
-> - The `--fetch-catalogs` flag downloads real operator catalog data for all OCP versions (4.15-4.19)
+> - The `--fetch-catalogs` flag downloads real operator catalog data for all OCP versions (4.16-4.20)
 > - **Without this flag, the application will not work properly** - it requires the catalog data to function
 > - This ensures you have access to the complete list of operators and their channels
 > - Subsequent runs can use `./container-run.sh` (without the flag) for faster startup

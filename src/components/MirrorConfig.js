@@ -31,7 +31,7 @@ const MirrorConfig = () => {
   const [activeTab, setActiveTab] = useState('platform');
 
   const ocpVersions = [
-    '4.15', '4.16', '4.17', '4.18', '4.19'
+    '4.16', '4.17', '4.18', '4.19', '4.20'
   ];
 
 
@@ -327,7 +327,7 @@ const MirrorConfig = () => {
   };
 
   const addOperator = async () => {
-    const defaultCatalog = operatorCatalogs[0]?.url || 'registry.redhat.io/redhat/redhat-operator-index:v4.15';
+    const defaultCatalog = operatorCatalogs[0]?.url || 'registry.redhat.io/redhat/redhat-operator-index:v4.16';
     const operators = await fetchOperatorsForCatalog(defaultCatalog);
     
     const newOperator = {

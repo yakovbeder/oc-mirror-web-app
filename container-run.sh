@@ -303,7 +303,7 @@ case "${1:-}" in
         echo ""
         echo "Catalog Fetching:"
         echo "  By default, the build process skips catalog fetching for faster builds."
-        echo "  Use --fetch-catalogs to fetch operator catalogs for OCP versions 4.15-4.19."
+        echo "  Use --fetch-catalogs to fetch operator catalogs for OCP versions 4.16-4.20."
         echo "  Catalog fetching can take several minutes but provides complete operator data."
         exit 0
         ;;
