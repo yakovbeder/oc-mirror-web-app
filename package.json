@@ -1,6 +1,6 @@
 {
   "name": "oc-mirror-web-app",
-  "version": "3.1.5.1",
+  "version": "3.2",
   "description": "Web application for OpenShift Container Platform mirroring operations using oc-mirror v2",
   "main": "index.js",
   "scripts": {

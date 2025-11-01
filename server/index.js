@@ -17,12 +17,6 @@ const PORT = process.env.PORT || 3001;
 const compression = require('compression');
 app.use(compression());
 
-// Cache static files
-app.use(express.static(path.join(__dirname, '../build'), {
-  maxAge: '1d',
-  etag: true
-}));
-
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -612,6 +606,15 @@ app.get('/api/operations/recent', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    service: 'oc-mirror-web-app'
+  });
+});
+
 app.get('/api/system/status', async (req, res) => {
   try {
     const systemInfo = await getSystemInfo();
@@ -1129,13 +1132,13 @@ app.get('/api/operators/:operator/versions', async (req, res) => {
   }
 });
 
-// New endpoint to get operator channel information
+// Endpoint to get operator channel information
 app.get('/api/operator-channels/:operator', async (req, res) => {
   try {
     const { operator } = req.params;
     const { catalogUrl } = req.query;
     
-    // Use pre-fetched catalog data
+    // Use pre-fetched catalog data first
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       // If catalogUrl is provided, extract catalog type and version
@@ -1180,21 +1183,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       }
     }
     
-    // Fallback response if operator not found
-    res.status(404).json({ error: 'Operator not found' });
-    
-  } catch (error) {
-    console.error(`Error getting channel info for ${operator}:`, error);
-    res.status(500).json({ error: 'Failed to get operator channel information' });
-  }
-});
-
-app.get('/api/operator-channels/:operator', async (req, res) => {
-  try {
-    const { operator } = req.params;
-    const { catalogUrl } = req.query;
-    
-    // If catalogUrl is provided, use it directly
+    // Fallback: Query channels dynamically
     if (catalogUrl) {
       const channels = await queryOperatorChannels(catalogUrl, operator);
       if (channels && Array.isArray(channels) && channels.length > 0) {
@@ -1203,7 +1192,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       }
     }
     
-    // Check cache first (fallback)
+    // Check cache as last resort
     if (operatorCache.channels[operator] && isCacheValid()) {
       const normalizedChannels = normalizeChannels(operatorCache.channels[operator], operator);
       return res.json(normalizedChannels);
@@ -1211,8 +1200,6 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
     
     // Get operator info from cache
     const cache = await updateOperatorCache();
-    
-    // Find operator by name across all catalogs
     const operatorInfo = Object.values(cache.operators).find(op => op.name === operator);
     
     if (!operatorInfo) {
@@ -1223,15 +1210,36 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
     const channels = await queryOperatorChannels(operatorInfo.catalog, operator);
     
     if (channels && Array.isArray(channels) && channels.length > 0) {
-      // Cache the result
       operatorCache.channels[operator] = channels;
       const normalizedChannels = normalizeChannels(channels, operator);
-      res.json(normalizedChannels);
-    } else {
-      res.status(404).json({ error: 'No channels found for this operator' });
+      return res.json(normalizedChannels);
     }
+    
+    res.status(404).json({ error: 'No channels found for this operator' });
   } catch (error) {
     console.error(`Error fetching channels for ${req.params.operator}:`, error);
+    res.status(500).json({ error: 'Failed to get operator channels' });
+  }
+});
+
+// Legacy endpoint for backwards compatibility
+app.get('/api/operators/channels', async (req, res) => {
+  try {
+    const { catalogUrl, operatorName } = req.query;
+    
+    if (!catalogUrl || !operatorName) {
+      return res.status(400).json({ error: 'catalogUrl and operatorName query parameters are required' });
+    }
+    
+    const channels = await queryOperatorChannels(catalogUrl, operatorName);
+    if (channels && Array.isArray(channels) && channels.length > 0) {
+      const normalizedChannels = normalizeChannels(channels, operatorName);
+      return res.json(normalizedChannels);
+    }
+    
+    res.status(404).json({ error: 'No channels found for this operator' });
+  } catch (error) {
+    console.error(`Error fetching channels:`, error);
     res.status(500).json({ error: 'Failed to get operator channels' });
   }
 });
@@ -1844,7 +1852,13 @@ app.get('/api/operations/:id/download', async (req, res) => {
   }
 });
 
-// Serve React app for all other routes
+// Cache static files (must be after API routes)
+app.use(express.static(path.join(__dirname, '../build'), {
+  maxAge: '1d',
+  etag: true
+}));
+
+// Serve React app for all other routes (catch-all must be last)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../build/index.html'));
 });
@@ -1863,4 +1877,6 @@ app.listen(PORT, () => {
   console.log(`Operations directory: ${OPERATIONS_DIR}`);
   console.log(`Logs directory: ${LOGS_DIR}`);
   console.log(`Cache directory: ${CACHE_DIR}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`API endpoints available at: http://localhost:${PORT}/api/*`);
 }); 

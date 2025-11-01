@@ -148,14 +148,16 @@ create_directories() {
 
         print_status "Fetching operator catalogs (this may take several minutes)..."
 
-        # Check if catalog data already exists and is recent (less than 24 hours old)
+        # Check if catalog data already exists and is recent (less than 7 days old)
         if [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
             local catalog_age=$(( $(date +%s) - $(stat -c %Y catalog-data/catalog-index.json 2>/dev/null || echo 0) ))
-            if [ $catalog_age -lt 86400 ]; then # 24 hours = 86400 seconds
-                print_success "Using existing catalog data (less than 24 hours old)"
+            local max_age=$((7 * 24 * 3600))  # 7 days in seconds
+            
+            if [ $catalog_age -lt $max_age ]; then
+                print_success "Using existing catalog data (less than 7 days old)"
                 return 0
             else
-                print_status "Existing catalog data is old, refreshing..."
+                print_status "Existing catalog data is older than 7 days, refreshing..."
             fi
         else
             print_status "No catalog data found, fetching operator catalogs..."
@@ -194,8 +196,12 @@ run_container() {
     # Check if container is already running
     if $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "oc-mirror-web-app"; then
         print_warning "Container is already running. Stopping it first..."
-        $CONTAINER_ENGINE stop oc-mirror-web-app
-        $CONTAINER_ENGINE rm oc-mirror-web-app
+        # Try graceful stop with timeout
+        if ! $CONTAINER_ENGINE stop -t 30 oc-mirror-web-app 2>/dev/null; then
+            print_warning "Graceful stop failed, attempting force stop..."
+            $CONTAINER_ENGINE stop -t 5 oc-mirror-web-app 2>/dev/null || true
+        fi
+        $CONTAINER_ENGINE rm oc-mirror-web-app 2>/dev/null || true
     fi
     
     # Run the container
@@ -227,7 +233,7 @@ show_status() {
     print_success "Application is running!"
     echo ""
     echo "🌐 Web Interface: http://localhost:3000"
-    echo "🔧 API Server: http://localhost:3001"
+    echo "🔧 API Server: http://localhost:3000/api (proxied through web interface)"
     echo ""
     echo "📁 Data Directory: $(pwd)/data"
     echo "📥 Downloads Directory: $(pwd)/downloads"
@@ -323,7 +329,17 @@ case "${1:-}" in
     --stop)
         detect_container_runtime
         print_status "Stopping and removing container..."
-        $CONTAINER_ENGINE stop oc-mirror-web-app 2>/dev/null || true
+        
+        # Try graceful stop first
+        if $CONTAINER_ENGINE stop -t 30 oc-mirror-web-app 2>/dev/null; then
+            print_success "Container stopped gracefully"
+        else
+            # If graceful stop fails, try with shorter timeout and then force
+            print_warning "Graceful stop failed, attempting force stop..."
+            $CONTAINER_ENGINE stop -t 5 oc-mirror-web-app 2>/dev/null || true
+        fi
+        
+        # Remove container
         $CONTAINER_ENGINE rm oc-mirror-web-app 2>/dev/null || true
         print_success "Container stopped and removed"
         exit 0
