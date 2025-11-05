@@ -26,5 +26,6 @@ data/cache/
 data/logs/
 data/operations/
 
-# Exclude downloads directory (contains large tar.gz files)
-downloads/
+# Exclude mirror content (contains large generated files)
+data/mirrors/*
+!data/mirrors/.gitkeep
