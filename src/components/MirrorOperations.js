@@ -28,6 +28,12 @@ const MirrorOperations = () => {
   // Delete confirmation modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteFilename, setDeleteFilename] = useState('');
+  
+  // Mirror destination subdirectory state
+  const [mirrorDestinationSubdir, setMirrorDestinationSubdir] = useState('');
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [notifiedOperations, setNotifiedOperations] = useState(new Set());
+  const [showMirrorLocation, setShowMirrorLocation] = useState({});
 
   useEffect(() => {
     fetchOperations();
@@ -57,7 +63,25 @@ const MirrorOperations = () => {
   const fetchOperations = async () => {
     try {
       const response = await axios.get('/api/operations');
+      const previousOps = operations;
       setOperations(response.data);
+      
+      // Check for newly completed operations and show location (only once per operation)
+      response.data.forEach(op => {
+        if (op.status === 'success' && op.mirrorDestination && !notifiedOperations.has(op.id)) {
+          const prevOp = previousOps.find(p => p.id === op.id);
+          // Only notify if operation status changed from 'running' to 'success'
+          // Don't notify if prevOp doesn't exist (means it was already successful when page loaded)
+          if (prevOp && prevOp.status === 'running' && op.status === 'success') {
+            toast.success(
+              `✅ Mirror Operation Completed!`,
+              { duration: 5000 }
+            );
+            // Mark this operation as notified
+            setNotifiedOperations(prev => new Set(prev).add(op.id));
+          }
+        }
+      });
       
       // Check if any operation is running
       const running = response.data.find(op => op.status === 'running');
@@ -81,6 +105,7 @@ const MirrorOperations = () => {
       console.error('Error fetching configurations:', error);
     }
   };
+
 
   const fetchLogs = async (operationId) => {
     try {
@@ -133,12 +158,15 @@ const MirrorOperations = () => {
     try {
       setLoading(true);
       const response = await axios.post('/api/operations/start', {
-        configFile: selectedConfig
+        configFile: selectedConfig,
+        mirrorDestinationSubdir: mirrorDestinationSubdir.trim() || undefined
       });
       
       toast.success('Operation started successfully!');
       setShowLogs(true);
       fetchOperations();
+      // Clear mirror destination subdirectory after starting
+      setMirrorDestinationSubdir('');
       
       // Start polling for logs if operation is running
       if (response.data.status === 'running') {
@@ -517,200 +545,6 @@ const MirrorOperations = () => {
     setShowLogs(false);
   };
 
-  const downloadMirrorFiles = async (operationId) => {
-    try {
-      // Create progress modal
-      const progressModal = document.createElement('div');
-      progressModal.className = 'progress-modal';
-      progressModal.innerHTML = `
-        <div class="progress-overlay">
-          <div class="progress-content">
-            <h3>Creating Download Archive</h3>
-            <div class="progress-bar-container">
-              <div class="progress-bar" id="download-progress-bar"></div>
-            </div>
-            <p id="download-progress-message">Initializing...</p>
-            <button id="cancel-download" class="btn btn-secondary">Cancel</button>
-          </div>
-        </div>
-      `;
-      
-      // Add styles
-      const style = document.createElement('style');
-      style.textContent = `
-        .progress-modal {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 9999;
-        }
-        .progress-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .progress-content {
-          background: white;
-          padding: 2rem;
-          border-radius: 8px;
-          text-align: center;
-          min-width: 400px;
-        }
-        .progress-bar-container {
-          width: 100%;
-          height: 20px;
-          background: #f0f0f0;
-          border-radius: 10px;
-          margin: 1rem 0;
-          overflow: hidden;
-        }
-        .progress-bar {
-          height: 100%;
-          background: linear-gradient(90deg, #007bff, #0056b3);
-          width: 0%;
-          transition: width 0.3s ease;
-        }
-        #cancel-download {
-          margin-top: 1rem;
-        }
-      `;
-      document.head.appendChild(style);
-      document.body.appendChild(progressModal);
-      
-      // Get progress elements
-      const progressBar = document.getElementById('download-progress-bar');
-      const progressMessage = document.getElementById('download-progress-message');
-      const cancelButton = document.getElementById('cancel-download');
-      
-      // Set up polling for progress updates
-      let pollInterval = setInterval(async () => {
-        try {
-          const response = await fetch(`/api/operations/${operationId}/download-progress`);
-          
-          // If response is empty or not ok, the download has completed
-          if (!response.ok || response.status === 404) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-            document.body.removeChild(progressModal);
-            document.head.removeChild(style);
-            
-            toast.success('Download completed successfully!', {
-              duration: 5000,
-            });
-            return;
-          }
-          
-          const data = await response.json();
-          
-          // If no progress data, the download has completed
-          if (!data || (data.progress === 0 && data.message === 'Initializing download...')) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-            document.body.removeChild(progressModal);
-            document.head.removeChild(style);
-            
-            toast.success('Download completed successfully!', {
-              duration: 5000,
-            });
-            return;
-          }
-          
-          progressBar.style.width = `${data.progress}%`;
-          progressMessage.textContent = data.message;
-          
-          // Close modal when archive creation is finished (95%) or download starts (100%)
-          if (data.progress >= 95) {
-            clearInterval(pollInterval);
-            pollInterval = null; // Ensure it's cleared
-            document.body.removeChild(progressModal);
-            document.head.removeChild(style);
-            
-            toast.success('Archive ready! Download will start in your browser shortly.', {
-              duration: 5000,
-            });
-            return; // Stop polling immediately
-          }
-        } catch (error) {
-          // eslint-disable-next-line no-console
-          console.error('Progress polling error:', error);
-          // If there's an error, assume download is complete and close modal
-          clearInterval(pollInterval);
-          pollInterval = null;
-          document.body.removeChild(progressModal);
-          document.head.removeChild(style);
-          
-          toast.success('Download completed successfully!', {
-            duration: 5000,
-          });
-        }
-      }, 200);
-      
-      // Start the download request immediately using fetch
-      fetch(`/api/operations/${operationId}/download`)
-        .then(response => {
-          if (response.ok) {
-            return response.blob();
-          }
-          throw new Error('Download failed');
-        })
-        .then(blob => {
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `mirror-files-${operationId}.tar.gz`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-        })
-        .catch(error => {
-          // eslint-disable-next-line no-console
-          console.error('Download error:', error);
-          clearInterval(pollInterval);
-          document.body.removeChild(progressModal);
-          document.head.removeChild(style);
-          toast.error('Download failed');
-        });
-      
-      // Initial poll
-      const initialPoll = async () => {
-        try {
-          const response = await fetch(`/api/operations/${operationId}/download-progress`);
-          const data = await response.json();
-          
-          progressBar.style.width = `${data.progress}%`;
-          progressMessage.textContent = data.message;
-        } catch (error) {
-          // eslint-disable-next-line no-console
-          console.error('Initial progress polling error:', error);
-        }
-      };
-      
-      // Initial poll
-      initialPoll();
-      
-      // Handle cancel button
-      cancelButton.addEventListener('click', () => {
-        clearInterval(pollInterval);
-        document.body.removeChild(progressModal);
-        document.head.removeChild(style);
-        toast.info('Download cancelled');
-      });
-      
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Error downloading mirror files:', error);
-      toast.error('Failed to download mirror files');
-    }
-  };
 
   // Auto-scroll to bottom when logs update
   useEffect(() => {
@@ -733,20 +567,20 @@ const MirrorOperations = () => {
 
       <div className="card">
         <h3>🚀 Start New Operation</h3>
-        <div className="grid">
+        
         <div className="form-group">
           <label>Configuration File</label>
           <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr auto auto auto', 
+            display: 'flex', 
             gap: '0.75rem', 
-            alignItems: 'center' 
+            alignItems: 'center',
+            flexWrap: 'wrap'
           }}>
             <select
               className="form-control"
               value={selectedConfig}
               onChange={(e) => setSelectedConfig(e.target.value)}
-              style={{ minWidth: '200px' }}
+              style={{ minWidth: '200px', flex: '1 1 200px' }}
             >
               <option value="">Select a configuration file...</option>
               {availableConfigs.map(config => (
@@ -780,20 +614,100 @@ const MirrorOperations = () => {
                 🗑️ Delete
               </button>
             )}
-            <button 
-              className="btn btn-primary" 
-              onClick={startOperation}
-              disabled={!selectedConfig || loading}
-              style={{ 
-                whiteSpace: 'nowrap',
-                minWidth: '140px',
-                padding: '0.5rem 1rem'
-              }}
-            >
-              {loading ? <div className="loading"></div> : '▶️ Start Operation'}
-            </button>
           </div>
         </div>
+        
+        <div className="form-group" style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap', position: 'relative' }}>
+          <div style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              📁 Mirror Destination Subdirectory
+              <span 
+                style={{ 
+                  cursor: 'pointer', 
+                  color: '#007bff', 
+                  fontSize: '0.9rem',
+                  fontWeight: 'bold',
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '50%',
+                  border: '1px solid #007bff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#f0f8ff',
+                  lineHeight: '1',
+                  flexShrink: 0
+                }}
+                onClick={() => setShowTooltip(!showTooltip)}
+                title="Click for help"
+              >
+                ?
+              </span>
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="default"
+              value={mirrorDestinationSubdir}
+              onChange={(e) => setMirrorDestinationSubdir(e.target.value)}
+              style={{ width: '250px', height: '38px' }}
+            />
+          </div>
+          <button 
+            className="btn btn-primary" 
+            onClick={startOperation}
+            disabled={!selectedConfig || loading}
+            style={{ 
+              whiteSpace: 'nowrap',
+              minWidth: '140px',
+              padding: '0.5rem 1rem',
+              height: '38px',
+              flexShrink: 0,
+              marginBottom: '0'
+            }}
+          >
+            {loading ? <div className="loading"></div> : '▶️ Start Operation'}
+          </button>
+          {showTooltip && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '0',
+              marginTop: '0.5rem',
+              padding: '0.75rem',
+              backgroundColor: '#fff',
+              border: '1px solid #dee2e6',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              lineHeight: '1.6',
+              zIndex: 1000,
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              maxWidth: '400px',
+              width: 'max-content'
+            }}>
+              <strong>How it works:</strong>
+              <br />
+              • Mirror files are saved to <code>data/mirrors/</code> on your host (this path is fixed and cannot be changed)
+              <br />
+              • If you leave this field empty, files are saved to <code>data/mirrors/default</code>
+              <br />
+              • If you enter a subdirectory name (e.g., <code>odf</code>), files are saved to <code>data/mirrors/odf</code>
+              <br />
+              • The subdirectory is created automatically if it doesn't exist, with correct permissions
+              <br />
+              <br />
+              <strong>Examples:</strong>
+              <br />
+              • Empty field → <code>data/mirrors/default</code>
+              <br />
+              • Enter <code>odf</code> → <code>data/mirrors/odf</code>
+              <br />
+              • Enter <code>production</code> → <code>data/mirrors/production</code>
+              <br />
+              <br />
+              <strong>Note:</strong> All files persist across container restarts since they are stored on your host filesystem.
+            </div>
+          )}
         </div>
         
         {runningOperation && (
@@ -869,13 +783,18 @@ const MirrorOperations = () => {
                             ⏹️ Stop
                           </button>
                         )}
-                        {op.status === 'success' && (
+                        {op.status === 'success' && op.mirrorDestination && (
                           <button 
-                            className="btn btn-success"
-                            onClick={() => downloadMirrorFiles(op.id)}
-                            title="Download mirror files"
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setShowMirrorLocation(prev => ({
+                                ...prev,
+                                [op.id]: !prev[op.id]
+                              }));
+                            }}
+                            title="Show/Hide mirror files location"
                           >
-                            📥 Download
+                            📁 {showMirrorLocation[op.id] ? 'Hide Location' : 'Location'}
                           </button>
                         )}
                         <button 
@@ -895,6 +814,66 @@ const MirrorOperations = () => {
                           🗑️ Delete
                         </button>
                       </div>
+                      {op.status === 'success' && op.mirrorDestination && showMirrorLocation[op.id] && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <strong style={{ color: '#155724', whiteSpace: 'nowrap' }}>📁 Mirror Files Location:</strong>
+                            <code style={{ 
+                              backgroundColor: '#fff', 
+                              padding: '0.5rem 0.75rem', 
+                              borderRadius: '4px',
+                              border: '1px solid #ced4da',
+                              flex: '1 1 400px',
+                              fontFamily: 'monospace',
+                              fontSize: '0.9rem',
+                              wordBreak: 'break-all',
+                              minWidth: '200px'
+                            }}>
+                              {(() => {
+                                const hostPath = op.mirrorDestination.replace('/app/data', 'data');
+                                // Construct full absolute path - project is typically in /home/ybeder/oc-mirror-web-app
+                                const projectRoot = '/home/ybeder/oc-mirror-web-app';
+                                return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+                              })()}
+                            </code>
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={async () => {
+                                const hostPath = op.mirrorDestination.replace('/app/data', 'data');
+                                // Construct full absolute path - project is in /home/ybeder/oc-mirror-web-app
+                                const projectRoot = '/home/ybeder/oc-mirror-web-app';
+                                const fullPath = `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+                                
+                                try {
+                                  await navigator.clipboard.writeText(fullPath);
+                                  toast.success('Full path copied to clipboard!');
+                                } catch (error) {
+                                  // Fallback for older browsers
+                                  const textArea = document.createElement('textarea');
+                                  textArea.value = fullPath;
+                                  textArea.style.position = 'fixed';
+                                  textArea.style.opacity = '0';
+                                  document.body.appendChild(textArea);
+                                  textArea.select();
+                                  try {
+                                    document.execCommand('copy');
+                                    toast.success('Full path copied to clipboard!');
+                                  } catch (err) {
+                                    toast.error('Failed to copy path');
+                                  }
+                                  document.body.removeChild(textArea);
+                                }
+                              }}
+                              style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                            >
+                              📋 Copy
+                            </button>
+                            <small style={{ color: '#6c757d', fontSize: '0.8rem', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                              ✓ Files persist across container restarts
+                            </small>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

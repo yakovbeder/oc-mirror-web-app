@@ -17,12 +17,6 @@ const PORT = process.env.PORT || 3001;
 const compression = require('compression');
 app.use(compression());
 
-// Cache static files
-app.use(express.static(path.join(__dirname, '../build'), {
-  maxAge: '1d',
-  etag: true
-}));
-
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -39,14 +33,13 @@ const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
-const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || './downloads';
 
 // Process tracking for operations
 const runningProcesses = new Map(); // operationId -> { pid, child }
 
 // Ensure directories exist
 async function ensureDirectories() {
-  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR, DOWNLOADS_DIR];
+  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR];
   for (const dir of dirs) {
     try {
       await fs.mkdir(dir, { recursive: true });
@@ -56,8 +49,77 @@ async function ensureDirectories() {
   }
 }
 
+// Clear operation history and logs on startup (if mirror files don't persist)
+// Note: With custom mirror destinations (default: /app/data/mirrors/default), 
+// mirror files persist across restarts, so we keep operation history
+async function clearOperationHistory() {
+  // Check if default mirror directory exists and has files
+  const defaultMirrorPath = '/app/data/mirrors/default';
+  let hasPersistedMirrors = false;
+  
+  try {
+    const files = await fs.readdir(defaultMirrorPath);
+    hasPersistedMirrors = files.length > 0;
+  } catch {
+    // Directory doesn't exist or empty - this is a fresh start
+    hasPersistedMirrors = false;
+  }
+  
+  // Only clear if no persisted mirrors exist (fresh start)
+  // With persistent mirrors, we keep history so users can see where files are
+  if (!hasPersistedMirrors) {
+    let clearedOps = 0;
+    let clearedLogs = 0;
+    
+    // Clear operation files
+    try {
+      const opFiles = await fs.readdir(OPERATIONS_DIR);
+      for (const file of opFiles) {
+        if (file.endsWith('.json')) {
+          try {
+            await fs.unlink(path.join(OPERATIONS_DIR, file));
+            clearedOps++;
+          } catch (error) {
+            console.warn(`Failed to delete operation file ${file}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('Error reading operations directory:', error);
+      }
+    }
+    
+    // Clear log files
+    try {
+      const logFiles = await fs.readdir(LOGS_DIR);
+      for (const file of logFiles) {
+        try {
+          await fs.unlink(path.join(LOGS_DIR, file));
+          clearedLogs++;
+        } catch (error) {
+          console.warn(`Failed to delete log file ${file}:`, error);
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('Error reading logs directory:', error);
+      }
+    }
+    
+    if (clearedOps > 0 || clearedLogs > 0) {
+      console.log(`Cleared ${clearedOps} operation files and ${clearedLogs} log files on startup (fresh start detected)`);
+    }
+  } else {
+    console.log('Persistent mirror files detected - keeping operation history');
+  }
+}
+
 // Initialize storage
-ensureDirectories();
+ensureDirectories().then(() => {
+  // Clear operation history after directories are ensured
+  clearOperationHistory();
+});
 
 // File upload configuration (using multer v2 syntax)
 // Note: Currently not used, but available for future file upload features
@@ -276,7 +338,7 @@ async function queryOperatorCatalog(catalogUrl) {
     if (catalogData) {
       // Extract catalog type and version from URL
       const catalogType = getCatalogNameFromUrl(catalogUrl);
-      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
       const key = `${catalogType}:${catalogVersion}`;
       
       if (catalogData.operators[key]) {
@@ -285,13 +347,12 @@ async function queryOperatorCatalog(catalogUrl) {
       }
     }
     
-    // Fallback to comprehensive static data
-    console.log(`Using comprehensive static data for catalog: ${catalogUrl}`);
-    return getComprehensiveStaticOperators(catalogUrl);
+    // Catalog data should always be available - if not, there's a configuration issue
+    console.error(`[ERROR] Catalog data not found for ${catalogUrl}. Catalog data should be pre-fetched during build.`);
+    return [];
   } catch (error) {
     console.error(`Error querying catalog ${catalogUrl}:`, error);
-    // Return static fallback data for common operators
-    return getStaticOperators(catalogUrl);
+    return [];
   }
 }
 
@@ -299,7 +360,7 @@ async function queryOperatorChannels(catalogUrl, operatorName) {
   try {
     // Extract catalog type and version from URL
     const catalogType = getCatalogNameFromUrl(catalogUrl);
-    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
     
     // First, try to read the actual catalog data from the catalog-data directory
     const actualChannels = await getActualChannelsFromCatalog(catalogType, catalogVersion, operatorName);
@@ -319,13 +380,12 @@ async function queryOperatorChannels(catalogUrl, operatorName) {
       }
     }
     
-    // Final fallback to comprehensive static data
-    console.log(`Using comprehensive static data for ${operatorName} from ${catalogVersion} catalog`);
-    return getComprehensiveStaticChannels(operatorName, catalogVersion);
+    // Catalog data should always be available - if not, there's a configuration issue
+    console.error(`[ERROR] Channel data not found for ${operatorName} in ${catalogUrl}. Catalog data should be pre-fetched during build.`);
+    return [];
   } catch (error) {
     console.error(`Error querying channels for ${operatorName} from ${catalogUrl}:`, error);
-    // Return static fallback data for common channels
-    return getStaticChannels(operatorName);
+    return [];
   }
 }
 
@@ -459,459 +519,6 @@ async function getActualChannelsFromCatalog(catalogType, catalogVersion, operato
   }
 }
 
-// Comprehensive static data based on actual Red Hat catalogs
-function getComprehensiveStaticOperators(catalogUrl) {
-  const comprehensiveData = {
-    'registry.redhat.io/redhat/redhat-operator-index': [
-      { name: '3scale-operator' },
-      { name: 'advanced-cluster-management' },
-      { name: 'amq-broker-rhel8' },
-      { name: 'amq-online' },
-      { name: 'amq-streams' },
-      { name: 'ansible-automation-platform-operator' },
-      { name: 'ansible-cloud-addons-operator' },
-      { name: 'apicast-operator' },
-      { name: 'authorino-operator' },
-      { name: 'aws-efs-csi-driver-operator' },
-      { name: 'aws-load-balancer-operator' },
-      { name: 'cert-manager' },
-      { name: 'cluster-logging' },
-      { name: 'elasticsearch-operator' },
-      { name: 'file-integrity-operator' },
-      { name: 'gatekeeper-operator' },
-      { name: 'jaeger-product' },
-      { name: 'kiali-ossm' },
-      { name: 'local-storage-operator' },
-      { name: 'node-problem-detector' },
-      { name: 'odf-operator' },
-      { name: 'openshift-gitops-operator' },
-      { name: 'quay-operator' },
-      { name: 'red-hat-camel-k' },
-      { name: 'redhat-oadp-operator' },
-      { name: 'service-mesh-operator' },
-      { name: 'skupper-operator' },
-      { name: 'submariner' },
-      { name: 'tempo-product' },
-      { name: 'vertical-pod-autoscaler' }
-    ],
-    'registry.redhat.io/redhat/certified-operator-index': [
-      { name: '3scale-operator' },
-      { name: 'amq-broker-rhel8' },
-      { name: 'amq-online' },
-      { name: 'amq-streams' },
-      { name: 'apicast-operator' },
-      { name: 'aws-load-balancer-operator' },
-      { name: 'couchbase-enterprise-certified' },
-      { name: 'crunchy-postgres-operator' },
-      { name: 'mongodb-enterprise' },
-      { name: 'nginx-ingress-operator' },
-      { name: 'postgresql' },
-      { name: 'redis-enterprise' },
-      { name: 'splunk-operator' },
-      { name: 'strimzi-kafka-operator' }
-    ],
-    'registry.redhat.io/redhat/community-operator-index': [
-      { name: '3scale-operator' },
-      { name: 'amq-broker' },
-      { name: 'amq-streams' },
-      { name: 'apicast-operator' },
-      { name: 'couchbase-enterprise' },
-      { name: 'mongodb-enterprise' },
-      { name: 'nginx-ingress-operator' },
-      { name: 'postgresql' },
-      { name: 'redis-enterprise' },
-      { name: 'strimzi-kafka-operator' }
-    ]
-  };
-  
-  return comprehensiveData[catalogUrl] || [];
-}
-
-// Static fallback data for when dynamic queries fail
-function getStaticOperators(catalogUrl) {
-  return getComprehensiveStaticOperators(catalogUrl);
-}
-
-// Comprehensive static channels based on actual Red Hat operator channels
-// Data extracted from real catalog.json files using the file-based catalog method
-function getComprehensiveStaticChannels(operatorName, catalogVersion = 'v4.15') {
-  const comprehensiveChannels = {
-    'advanced-cluster-management': (catalogVersion) => {
-      // Version-specific channels for ACM operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.10' }
-        ],
-        'v4.16': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.10' }
-        ],
-        'v4.17': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.11' }
-        ],
-        'v4.18': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.12' }
-        ],
-        'v4.19': [
-          { name: 'release-2.13' },  // Latest channel (default)
-          { name: 'release-2.13' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'amq-streams': [
-      { name: 'amq-streams-2.6.x' },  // Latest channel
-      { name: 'amq-streams-2.5.x' },
-      { name: 'amq-streams-2.4.x' },
-      { name: 'amq-streams-2.3.x' },
-      { name: 'amq-streams-2.2.x' }
-    ],
-    'amq-broker-rhel8': [
-      { name: '7.12.x' },  // Latest channel
-      { name: '7.11.x' },
-      { name: '7.10.x' },
-      { name: '7.9.x' }
-    ],
-    'amq-online': [
-      { name: '1.10.x' },
-      { name: '1.9.x' },
-      { name: '1.8.x' }
-    ],
-    'ansible-automation-platform-operator': (catalogVersion) => {
-      // Version-specific channels for Ansible Automation Platform operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.16': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.17': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.18': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.4' }
-        ],
-        'v4.19': [
-          { name: 'stable-2.5' },  // Latest channel (default)
-          { name: 'stable-2.5' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'cert-manager': [
-      { name: 'stable-v1.14' },  // Latest channel
-      { name: 'stable-v1.13' },
-      { name: 'stable-v1.12' },
-      { name: 'stable-v1.11' },
-      { name: 'stable-v1.10' }
-    ],
-    'cluster-logging': [
-      { name: 'stable-5.9' },  // Latest channel
-      { name: 'stable-5.8' },
-      { name: 'stable-5.7' },
-      { name: 'stable-5.6' },
-      { name: 'stable-5.5' }
-    ],
-    'elasticsearch-operator': [
-      { name: 'stable-5.9' },  // Latest channel
-      { name: 'stable-5.8' },
-      { name: 'stable-5.7' },
-      { name: 'stable-5.6' },
-      { name: 'stable-5.5' }
-    ],
-    'file-integrity-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'gatekeeper-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'jaeger-product': [
-      { name: 'stable' },
-      { name: 'stable-1.47' },
-      { name: 'stable-1.46' }
-    ],
-    'kiali-ossm': [
-      { name: 'stable' },
-      { name: 'stable-1.67' },
-      { name: 'stable-1.66' }
-    ],
-    'local-storage-operator': (catalogVersion) => {
-      // Local storage operator uses the same channels across all versions
-      return [
-        { name: 'stable' },  // Default channel
-        { name: 'stable-4.15' },
-        { name: 'stable-4.14' }
-      ];
-    },
-    'node-problem-detector': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'odf-operator': (catalogVersion) => {
-      // Version-specific channels for ODF operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'stable-4.15' },  // Latest channel (default)
-          { name: 'stable-4.14' }
-        ],
-        'v4.16': [
-          { name: 'stable-4.16' },  // Latest channel (default)
-          { name: 'stable-4.15' }
-        ],
-        'v4.17': [
-          { name: 'stable-4.17' },  // Latest channel (default)
-          { name: 'stable-4.16' }
-        ],
-        'v4.18': [
-          { name: 'stable-4.18' },  // Latest channel (default)
-          { name: 'stable-4.17' }
-        ],
-        'v4.19': [
-          { name: 'stable-4.18' },  // Latest channel (default)
-          { name: 'stable-4.18' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'openshift-gitops-operator': [
-      { name: 'stable-1.11' },  // Latest channel
-      { name: 'stable-1.10' },
-      { name: 'stable-1.9' },
-      { name: 'stable-1.8' },
-      { name: 'stable-1.7' }
-    ],
-    'quay-operator': [
-      { name: 'stable-3.9' },  // Latest channel
-      { name: 'stable-3.8' },
-      { name: 'stable-3.7' },
-      { name: 'stable-3.6' },
-      { name: 'stable-3.5' }
-    ],
-    'red-hat-camel-k': [
-      { name: 'stable' },
-      { name: 'stable-1.15' },
-      { name: 'stable-1.14' }
-    ],
-    'redhat-oadp-operator': [
-      { name: 'stable-1.4' },  // Latest channel
-      { name: 'stable-1.3' },
-      { name: 'stable-1.2' },
-      { name: 'stable-1.1' },
-      { name: 'stable-1.0' }
-    ],
-    'rhbk-operator': (catalogVersion) => {
-      // Version-specific channels for RHBK operator
-      if (catalogVersion === 'v4.18') {
-        return [
-          { name: 'stable-v26.2' },  // Latest channel (default)
-          { name: 'stable-v26.0' },
-          { name: 'stable-v26' },
-          { name: 'stable-v24.0' },
-          { name: 'stable-v24' },
-          { name: 'stable-v22.0' },
-          { name: 'stable-v22' }
-        ];
-      } else {
-        // For v4.15, v4.16, v4.17, v4.19 - only stable-v22 is available
-        return [
-          { name: 'stable-v22' },  // Only available channel
-          { name: 'stable-v22.0' }
-        ];
-      }
-    },
-    'service-mesh-operator': [
-      { name: 'stable-2.6' },  // Latest channel
-      { name: 'stable-2.5' },
-      { name: 'stable-2.4' },
-      { name: 'stable-2.3' },
-      { name: 'stable-2.2' }
-    ],
-    'skupper-operator': [
-      { name: 'stable' },
-      { name: 'stable-1.4' },
-      { name: 'stable-1.3' }
-    ],
-    'submariner': [
-      { name: 'stable-0.16' },
-      { name: 'stable-0.15' },
-      { name: 'stable-0.14' },
-      { name: 'stable-0.13' }
-    ],
-    '3scale-operator': (catalogVersion) => {
-      // Version-specific channels for 3scale operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.16': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.17': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.18': [
-          { name: 'threescale-2.15' },  // Latest channel (default)
-          { name: 'threescale-2.13' }
-        ],
-        'v4.19': [
-          { name: 'threescale-2.13' },  // Latest channel (default)
-          { name: 'threescale-mas' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'amq-broker-rhel8': [
-      { name: '7.12.x' },  // Latest channel
-      { name: '7.11.x' },
-      { name: '7.10.x' },
-      { name: '7.9.x' }
-    ],
-    'amq-online': [
-      { name: '1.10.x' },
-      { name: '1.9.x' },
-      { name: '1.8.x' }
-    ],
-    'apicast-operator': [
-      { name: '3scale-2.13' },
-      { name: '3scale-2.12' },
-      { name: '3scale-2.11' }
-    ],
-    'aws-load-balancer-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'couchbase-enterprise-certified': [
-      { name: 'stable' },
-      { name: 'stable-2.3' }
-    ],
-    'crunchy-postgres-operator': [
-      { name: 'stable' },
-      { name: 'stable-5.4' }
-    ],
-    'mongodb-enterprise': [
-      { name: 'stable' },
-      { name: 'stable-1.20' }
-    ],
-    'nginx-ingress-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.6' }
-    ],
-    'postgresql': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'redis-enterprise': [
-      { name: 'stable' },
-      { name: 'stable-6.2' }
-    ],
-    'splunk-operator': [
-      { name: 'stable' },
-      { name: 'stable-1.0' }
-    ],
-    'strimzi-kafka-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.36' }
-    ],
-    'tempo-product': [
-      { name: 'stable' },
-      { name: 'stable-2.3' }
-    ],
-    'vertical-pod-autoscaler': [
-      { name: 'stable' },
-      { name: 'stable-4.15' }
-    ],
-    'node-observability-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'file-integrity-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'gatekeeper-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'local-storage-operator': [
-      { name: 'stable' },
-      { name: 'stable-4.15' },
-      { name: 'stable-4.14' }
-    ],
-    'node-problem-detector': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'aws-efs-csi-driver-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'aws-load-balancer-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'authorino-operator': [
-      { name: 'stable' },
-      { name: 'stable-0.1' }
-    ],
-    'ansible-cloud-addons-operator': (catalogVersion) => {
-      // Version-specific channels for Ansible Cloud Addons operator
-      const versionMap = {
-        'v4.15': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.4-cluster-scoped' }
-        ],
-        'v4.16': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.4-cluster-scoped' }
-        ],
-        'v4.17': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.4-cluster-scoped' }
-        ],
-        'v4.18': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.5-cluster-scoped' }
-        ],
-        'v4.19': [
-          { name: 'stable-2.5-cluster-scoped' },  // Latest channel (default)
-          { name: 'stable-2.5-cluster-scoped' }
-        ]
-      };
-      return versionMap[catalogVersion] || versionMap['v4.15'];
-    },
-    'apicast-operator': [
-      { name: '3scale-2.13' },
-      { name: '3scale-2.12' },
-      { name: '3scale-2.11' }
-    ]
-  };
-  
-  const channels = comprehensiveChannels[operatorName];
-  
-  // Handle function-based channel configurations (like RHBK operator)
-  if (typeof channels === 'function') {
-    return channels(catalogVersion);
-  }
-  
-  return channels || [];
-}
-
-function getStaticChannels(operatorName) {
-  return getComprehensiveStaticChannels(operatorName, 'v4.15');
-}
 
 // Cache for dynamic data
 const operatorCache = {
@@ -1067,6 +674,15 @@ app.get('/api/operations/recent', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    service: 'oc-mirror-web-app'
+  });
+});
+
 app.get('/api/system/status', async (req, res) => {
   try {
     const systemInfo = await getSystemInfo();
@@ -1078,6 +694,54 @@ app.get('/api/system/status', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get system status' });
+  }
+});
+
+// Get available paths for mirror destination
+app.get('/api/system/paths', async (req, res) => {
+  try {
+    const commonPaths = [
+      { 
+        path: '/app/data/mirrors/default', 
+        label: 'Default (Persistent)', 
+        description: 'Recommended - survives container restarts, mounted volume' 
+      },
+      { 
+        path: '/app/data/mirrors', 
+        label: 'Data Mirrors Root', 
+        description: 'Persistent - mounted volume, create subdirectories as needed' 
+      },
+      { 
+        path: '/app/data/mirrors/custom', 
+        label: 'Custom Directory', 
+        description: 'Persistent - create custom subdirectory for this operation' 
+      },
+      { 
+        path: '/app/mirror', 
+        label: 'Container Mirror (Ephemeral)', 
+        description: '⚠️ Ephemeral - lost on container restart, not recommended' 
+      }
+    ];
+    
+    // Check which paths exist and are writable
+    const availablePaths = [];
+    for (const pathInfo of commonPaths) {
+      try {
+        // Try to create directory if it doesn't exist
+        await fs.mkdir(pathInfo.path, { recursive: true });
+        // Check if writable
+        await fs.access(pathInfo.path, fs.constants.W_OK);
+        pathInfo.available = true;
+      } catch {
+        pathInfo.available = false;
+      }
+      availablePaths.push(pathInfo);
+    }
+    
+    res.json({ paths: availablePaths });
+  } catch (error) {
+    console.error('Error listing paths:', error);
+    res.status(500).json({ error: 'Failed to list available paths' });
   }
 });
 
@@ -1258,7 +922,7 @@ app.get('/api/operators', async (req, res) => {
       if (catalogData) {
         // Extract catalog type and version from URL
         const catalogType = getCatalogNameFromUrl(catalog);
-        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.15';
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1518,7 +1182,7 @@ app.get('/api/operators/:operator/versions', async (req, res) => {
       // If catalog is provided, extract catalog type and version
       if (catalog) {
         const catalogType = getCatalogNameFromUrl(catalog);
-        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.15';
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1584,19 +1248,19 @@ app.get('/api/operators/:operator/versions', async (req, res) => {
   }
 });
 
-// New endpoint to get operator channel information
+// Endpoint to get operator channel information
 app.get('/api/operator-channels/:operator', async (req, res) => {
   try {
     const { operator } = req.params;
     const { catalogUrl } = req.query;
     
-    // Use pre-fetched catalog data
+    // Use pre-fetched catalog data first
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       // If catalogUrl is provided, extract catalog type and version
       if (catalogUrl) {
         const catalogType = getCatalogNameFromUrl(catalogUrl);
-        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.15';
+        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1635,21 +1299,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       }
     }
     
-    // Fallback response if operator not found
-    res.status(404).json({ error: 'Operator not found' });
-    
-  } catch (error) {
-    console.error(`Error getting channel info for ${operator}:`, error);
-    res.status(500).json({ error: 'Failed to get operator channel information' });
-  }
-});
-
-app.get('/api/operator-channels/:operator', async (req, res) => {
-  try {
-    const { operator } = req.params;
-    const { catalogUrl } = req.query;
-    
-    // If catalogUrl is provided, use it directly
+    // Fallback: Query channels dynamically
     if (catalogUrl) {
       const channels = await queryOperatorChannels(catalogUrl, operator);
       if (channels && Array.isArray(channels) && channels.length > 0) {
@@ -1658,7 +1308,7 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
       }
     }
     
-    // Check cache first (fallback)
+    // Check cache as last resort
     if (operatorCache.channels[operator] && isCacheValid()) {
       const normalizedChannels = normalizeChannels(operatorCache.channels[operator], operator);
       return res.json(normalizedChannels);
@@ -1666,8 +1316,6 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
     
     // Get operator info from cache
     const cache = await updateOperatorCache();
-    
-    // Find operator by name across all catalogs
     const operatorInfo = Object.values(cache.operators).find(op => op.name === operator);
     
     if (!operatorInfo) {
@@ -1678,15 +1326,36 @@ app.get('/api/operator-channels/:operator', async (req, res) => {
     const channels = await queryOperatorChannels(operatorInfo.catalog, operator);
     
     if (channels && Array.isArray(channels) && channels.length > 0) {
-      // Cache the result
       operatorCache.channels[operator] = channels;
       const normalizedChannels = normalizeChannels(channels, operator);
-      res.json(normalizedChannels);
-    } else {
-      res.status(404).json({ error: 'No channels found for this operator' });
+      return res.json(normalizedChannels);
     }
+    
+    res.status(404).json({ error: 'No channels found for this operator' });
   } catch (error) {
     console.error(`Error fetching channels for ${req.params.operator}:`, error);
+    res.status(500).json({ error: 'Failed to get operator channels' });
+  }
+});
+
+// Legacy endpoint for backwards compatibility
+app.get('/api/operators/channels', async (req, res) => {
+  try {
+    const { catalogUrl, operatorName } = req.query;
+    
+    if (!catalogUrl || !operatorName) {
+      return res.status(400).json({ error: 'catalogUrl and operatorName query parameters are required' });
+    }
+    
+    const channels = await queryOperatorChannels(catalogUrl, operatorName);
+    if (channels && Array.isArray(channels) && channels.length > 0) {
+      const normalizedChannels = normalizeChannels(channels, operatorName);
+      return res.json(normalizedChannels);
+    }
+    
+    res.status(404).json({ error: 'No channels found for this operator' });
+  } catch (error) {
+    console.error(`Error fetching channels:`, error);
     res.status(500).json({ error: 'Failed to get operator channels' });
   }
 });
@@ -1712,7 +1381,7 @@ app.get('/api/operations/history', async (req, res) => {
 
 app.post('/api/operations/start', async (req, res) => {
   try {
-    const { configFile } = req.body;
+    const { configFile, mirrorDestinationSubdir } = req.body;
     const operationId = uuidv4();
     const configPath = path.join(CONFIGS_DIR, configFile);
     
@@ -1723,17 +1392,137 @@ app.post('/api/operations/start', async (req, res) => {
       return res.status(404).json({ error: 'Configuration file not found' });
     }
 
-    // Create operation record
+    // Use default cache directory (persistent via mounted volume)
+    const cacheDir = CACHE_DIR;
+
+    // Determine mirror destination path based on subdirectory name
+    const baseMirrorPath = '/app/data/mirrors';
+    let subdirName = 'default'; // Default subdirectory
+    
+    if (mirrorDestinationSubdir && mirrorDestinationSubdir.trim()) {
+      const subdirInput = mirrorDestinationSubdir.trim();
+      
+      // Validate subdirectory name (prevent path traversal and invalid characters)
+      if (subdirInput.includes('/') || subdirInput.includes('..') || subdirInput.includes('\\')) {
+        return res.status(400).json({ 
+          error: 'Subdirectory name cannot contain path separators or traversal characters',
+          provided: subdirInput,
+          help: 'Use a simple name like "odf" or "production" (no slashes or special characters)'
+        });
+      }
+      
+      // Validate subdirectory name is not empty after trim
+      if (!subdirInput || subdirInput.length === 0) {
+        return res.status(400).json({ error: 'Subdirectory name cannot be empty' });
+      }
+      
+      // Basic validation: alphanumeric, dash, underscore (common filesystem-safe characters)
+      if (!/^[a-zA-Z0-9_-]+$/.test(subdirInput)) {
+        return res.status(400).json({ 
+          error: 'Subdirectory name contains invalid characters',
+          provided: subdirInput,
+          help: 'Use only letters, numbers, dashes (-), and underscores (_)'
+        });
+      }
+      
+      subdirName = subdirInput;
+    }
+    
+    // Construct full mirror path
+    const mirrorPath = path.join(baseMirrorPath, subdirName);
+    
+    // Ensure parent directory exists and is writable
+    try {
+      await fs.mkdir(baseMirrorPath, { recursive: true, mode: 0o777 });
+      // Try to write to verify permissions
+      const testFile = path.join(baseMirrorPath, '.test-write');
+      try {
+        await fs.writeFile(testFile, 'test', { flag: 'w' });
+        await fs.unlink(testFile);
+      } catch (writeError) {
+        // If write fails, directory exists but not writable
+        console.error(`Cannot write to base mirror directory ${baseMirrorPath}:`, writeError);
+        return res.status(500).json({ 
+          error: 'Base mirror directory is not writable',
+          path: baseMirrorPath,
+          details: writeError.message,
+          code: writeError.code
+        });
+      }
+    } catch (error) {
+      console.error(`Error accessing base mirror directory ${baseMirrorPath}:`, error);
+      return res.status(500).json({ 
+        error: 'Cannot access base mirror directory',
+        path: baseMirrorPath,
+        details: error.message,
+        code: error.code
+      });
+    }
+    
+    // Create directory if it doesn't exist with correct permissions
+    // Note: mkdir with recursive:true will succeed if directory already exists
+    try {
+      const dirExists = await fs.access(mirrorPath).then(() => true).catch(() => false);
+      
+      if (!dirExists) {
+        // Directory doesn't exist, create it
+        await fs.mkdir(mirrorPath, { recursive: true, mode: 0o775 });
+        console.log(`Created new mirror directory: ${mirrorPath}`);
+      } else {
+        // Directory exists, just verify it's writable
+        console.log(`Using existing mirror directory: ${mirrorPath}`);
+      }
+      
+      // Always verify write permissions (for both new and existing directories)
+      await fs.access(mirrorPath, fs.constants.W_OK);
+      
+      // Try a test write to ensure we can actually write files
+      const testFile = path.join(mirrorPath, '.test-write');
+      try {
+        await fs.writeFile(testFile, 'test', { flag: 'w' });
+        await fs.unlink(testFile);
+      } catch (writeError) {
+        console.error(`Cannot write to mirror directory ${mirrorPath}:`, writeError);
+        return res.status(500).json({ 
+          error: 'Mirror destination directory exists but is not writable',
+          path: mirrorPath,
+          subdirectory: subdirName,
+          details: writeError.message,
+          code: writeError.code,
+          help: 'The directory exists but the container cannot write to it. Check permissions on the host.'
+        });
+      }
+    } catch (error) {
+      console.error(`Error creating/accessing mirror directory ${mirrorPath}:`, error);
+      return res.status(500).json({ 
+        error: 'Cannot create or access mirror destination directory',
+        path: mirrorPath,
+        subdirectory: subdirName,
+        details: error.message,
+        code: error.code
+      });
+    }
+
+    // Create operation record (store mirror path)
     const operation = {
       id: operationId,
       name: `Mirror Operation ${operationId.slice(0, 8)}`,
       configFile,
+      mirrorDestination: mirrorPath,  // Store for reference
       status: 'running',
       startedAt: new Date().toISOString(),
       logs: []
     };
 
-    await saveOperation(operation);
+    try {
+      await saveOperation(operation);
+    } catch (error) {
+      console.error(`Error saving operation ${operationId}:`, error);
+      return res.status(500).json({ 
+        error: 'Failed to create operation record',
+        details: error.message
+      });
+    }
 
     // Start oc-mirror process with v2 using spawn for better process control
     const logFile = path.join(LOGS_DIR, `${operationId}.log`);
@@ -1741,17 +1530,30 @@ app.post('/api/operations/start', async (req, res) => {
     // Create log file stream
     const logStream = require('fs').createWriteStream(logFile);
     
+    // Convert absolute path to file:// URL format
+    // /app/data/mirrors/default -> file://data/mirrors/default (relative to /app)
+    // /custom/path -> file:///custom/path (absolute with three slashes)
+    let mirrorUrl;
+    if (mirrorPath.startsWith('/app/')) {
+      // Relative to /app working directory
+      mirrorUrl = `file://${mirrorPath.substring(5)}`;
+    } else {
+      // Absolute path (needs three slashes)
+      mirrorUrl = `file://${mirrorPath}`;
+    }
+    
     // Spawn the oc-mirror process
     const child = spawn('oc-mirror', [
       '--v2',
       '--config', configPath,
       '--dest-tls-verify=false',
       '--src-tls-verify=false',
-      '--cache-dir', CACHE_DIR,
+      '--cache-dir', cacheDir,  // Use default cache directory (persistent via mounted volume)
       '--authfile', '/app/pull-secret.json',
-      'file://mirror'
+      mirrorUrl  // Use custom or default path
     ], {
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: '/app'  // Set working directory for relative paths
     });
     
     // Track the process
@@ -2141,165 +1943,13 @@ async function countFiles(dirPath) {
   return count;
 }
 
-// Download progress endpoint (Simple JSON response)
-app.get('/api/operations/:id/download-progress', (req, res) => {
-  const { id } = req.params;
-  
-  // Initialize progress tracking if not exists
-  if (!global.downloadProgress) {
-    global.downloadProgress = new Map();
-  }
-  
-  // Get current progress for this download
-  const progress = global.downloadProgress.get(id) || { progress: 0, message: 'Initializing download...' };
-  
-  res.json(progress);
-});
+// Cache static files (must be after API routes)
+app.use(express.static(path.join(__dirname, '../build'), {
+  maxAge: '1d',
+  etag: true
+}));
 
-// Download mirror files endpoint
-app.get('/api/operations/:id/download', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const operation = await getOperation(id);
-    
-    if (!operation) {
-      return res.status(404).json({ error: 'Operation not found' });
-    }
-    
-    if (operation.status !== 'success') {
-      return res.status(400).json({ error: 'Operation must be successful to download files' });
-    }
-    
-    const mirrorDir = '/app/mirror';
-    
-    // Check if mirror directory exists
-    try {
-      await fs.access(mirrorDir);
-    } catch (error) {
-      return res.status(404).json({ error: 'Mirror files not found. Operation may not have completed successfully.' });
-    }
-    
-    // Send progress updates with debugging
-    const sendProgress = (progress, message) => {
-      console.log(`[PROGRESS] ${progress}%: ${message}`);
-      // Store progress data for polling
-      if (!global.downloadProgress) {
-        global.downloadProgress = new Map();
-      }
-      global.downloadProgress.set(id, { progress, message });
-    };
-    
-    sendProgress(10, 'Scanning mirror directory...');
-    
-    // Get directory size for progress calculation
-    const getDirectorySize = async (dirPath) => {
-      let totalSize = 0;
-      const files = await fs.readdir(dirPath, { withFileTypes: true });
-      
-      for (const file of files) {
-        const fullPath = path.join(dirPath, file.name);
-        if (file.isDirectory()) {
-          totalSize += await getDirectorySize(fullPath);
-        } else {
-          const stats = await fs.stat(fullPath);
-          totalSize += stats.size;
-        }
-      }
-      return totalSize;
-    };
-    
-    const totalSize = await getDirectorySize(mirrorDir);
-    sendProgress(20, `Found ${totalSize} bytes to archive...`);
-    
-    // Create a temporary tar.gz file
-    const tarFileName = `mirror-files-${id}-${Date.now()}.tar.gz`;
-    const tarFilePath = path.join(DOWNLOADS_DIR, tarFileName);
-    
-    sendProgress(30, 'Creating tar.gz archive...');
-    
-    // Set response headers for file download
-    res.setHeader('Content-Type', 'application/gzip');
-    res.setHeader('Content-Disposition', `attachment; filename="${tarFileName}"`);
-    
-    // Create archive with simple progress tracking
-    sendProgress(40, 'Creating archive...');
-    
-    // Use a simple approach with manual progress updates
-    const { spawn } = require('child_process');
-    const tarProcess = spawn('tar', ['-czf', tarFilePath, '-C', '/app', 'mirror'], {
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    
-    let progressCounter = 40;
-    const progressInterval = setInterval(() => {
-      if (progressCounter < 85) {
-        progressCounter += 5;
-        sendProgress(progressCounter, `Creating archive... ${progressCounter}%`);
-      }
-    }, 200);
-    
-    // Handle tar process completion
-    tarProcess.on('close', async (code) => {
-      clearInterval(progressInterval);
-      
-      if (code === 0) {
-        sendProgress(90, 'Archive created successfully');
-        try {
-          sendProgress(95, 'Archive creation completed. Initializing download...');
-          
-          // Get file stats for Content-Length
-          const stats = await fs.stat(tarFilePath);
-          res.setHeader('Content-Length', stats.size);
-          
-          sendProgress(100, 'Download starting in browser...');
-          
-          // Clean up progress data after sending 100%
-          setTimeout(() => {
-            if (global.downloadProgress) {
-              global.downloadProgress.delete(id);
-            }
-          }, 1000); // Clean up after 1 second
-          
-          // Stream the tar.gz file to response
-          const fileStream = require('fs').createReadStream(tarFilePath);
-          fileStream.pipe(res);
-          
-          // Clean up the temporary tar.gz file after streaming
-          fileStream.on('end', async () => {
-            try {
-              await fs.unlink(tarFilePath);
-              // Clean up progress data
-              if (global.downloadProgress) {
-                global.downloadProgress.delete(id);
-              }
-            } catch (cleanupError) {
-              console.error('Error cleaning up temporary tar.gz file:', cleanupError);
-            }
-          });
-        } catch (error) {
-          console.error('Error streaming tar.gz file:', error);
-          res.status(500).json({ error: 'Failed to download files' });
-        }
-      } else {
-        console.error('Tar process failed with code:', code);
-        res.status(500).json({ error: 'Failed to create download archive' });
-      }
-    });
-    
-    // Handle tar process errors
-    tarProcess.on('error', (err) => {
-      clearInterval(progressInterval);
-      console.error('Error creating archive:', err);
-      res.status(500).json({ error: 'Failed to create download archive' });
-    });
-    
-  } catch (error) {
-    console.error('Error downloading mirror files:', error);
-    res.status(500).json({ error: 'Failed to download mirror files' });
-  }
-});
-
-// Serve React app for all other routes
+// Serve React app for all other routes (catch-all must be last)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../build/index.html'));
 });
@@ -2318,4 +1968,6 @@ app.listen(PORT, () => {
   console.log(`Operations directory: ${OPERATIONS_DIR}`);
   console.log(`Logs directory: ${LOGS_DIR}`);
   console.log(`Cache directory: ${CACHE_DIR}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`API endpoints available at: http://localhost:${PORT}/api/*`);
 }); 

@@ -77,39 +77,48 @@ fix_permissions() {
     print_status "Checking directory permissions..."
     
     # Check if directories are writable by current user
-    if [ -w "data" ] && [ -w "downloads" ]; then
+    if [ -w "data" ]; then
         print_success "Directories have proper permissions"
         return 0
     fi
     
-    # Check if directories are already owned by container user (UID 1001 or similar)
+    # Check if directories are already owned by container user (UID 1000 - node user in node:20-slim image)
     local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
-    local downloads_owner=$(stat -c '%u' downloads/ 2>/dev/null || echo "unknown")
     
-    if [ "$data_owner" != "1001" ] && [ "$data_owner" != "101000" ]; then
-        print_status "Fixing directory permissions for container user..."
+    # Container runs as node user (UID 1000), check if ownership needs fixing
+    # Also check mirror directories
+    local mirror_owner=$(stat -c '%u' data/mirrors/ 2>/dev/null || echo "unknown")
+    
+    if [ "$data_owner" != "1000" ] && [ "$data_owner" != "unknown" ]; then
+        print_status "Fixing directory permissions for container user (UID 1000)..."
         
-        # Try to fix permissions, but don't fail if we can't
-        if chmod -R 755 data/ downloads/ 2>/dev/null; then
-            print_success "Permissions set to 755"
+        # Try to fix permissions - use 777 (world-writable) to ensure node user can write
+        # This is safe for local data directories and handles volume mount ownership issues
+        if chmod -R 777 data/ 2>/dev/null; then
+            print_success "Permissions set to 777 (world-writable - required for volume mounts)"
         else
-            print_warning "Could not set permissions to 755, trying alternative approach..."
-            if chmod -R 777 data/ downloads/ 2>/dev/null; then
-                print_success "Permissions set to 777 (world-writable)"
+            print_warning "Could not set permissions. Trying with sudo..."
+            if sudo chmod -R 777 data/ 2>/dev/null; then
+                print_success "Permissions set to 777 with sudo"
             else
-                print_warning "Could not change permissions. Container may have issues."
-                print_warning "You may need to run: sudo chmod -R 755 data/ downloads/"
+                print_warning "Could not change permissions even with sudo."
+                print_warning "Manual fix required: sudo chmod -R 777 data/"
             fi
         fi
         
-        # Try to change ownership, but don't fail if we can't
-        if chown -R 1001:1001 data/ downloads/ 2>/dev/null; then
-            print_success "Ownership changed to container user (UID 1001)"
+        # Try to change ownership to node user (UID 1000), but don't fail if we can't
+        if chown -R 1000:1000 data/ 2>/dev/null; then
+            print_success "Ownership changed to container user (UID 1000 - node user)"
         else
             print_warning "Could not change ownership (may need sudo). Continuing anyway..."
+            print_warning "To fix manually, run: sudo chown -R 1000:1000 data/"
         fi
     else
-        print_success "Directories already owned by container user (UID $data_owner)"
+        if [ "$data_owner" = "1000" ]; then
+            print_success "Directories already owned by container user (UID 1000)"
+        else
+            print_status "Directories will be created by container with correct permissions"
+        fi
     fi
 }
 
@@ -128,11 +137,21 @@ create_directories() {
         print_success "Data directory already exists"
     fi
     
-    if [ ! -d "downloads" ]; then
-        print_status "Creating downloads directory..."
-        mkdir -p downloads
+    # Create default mirror directory in mounted volume (persistent)
+    if [ ! -d "data/mirrors" ]; then
+        print_status "Creating mirror storage base directory..."
+        mkdir -p data/mirrors
+        chmod -R 777 data/mirrors 2>/dev/null || true
+        print_success "Created data/mirrors (persistent mirror location - survives container restarts)"
     else
-        print_success "Downloads directory already exists"
+        print_success "Mirror storage directory already exists"
+        chmod -R 777 data/mirrors 2>/dev/null || true
+    fi
+    
+    # Ensure default subdirectory exists
+    if [ ! -d "data/mirrors/default" ]; then
+        mkdir -p data/mirrors/default
+        chmod -R 777 data/mirrors/default 2>/dev/null || true
     fi
     
     # Fix permissions for container user
@@ -148,14 +167,16 @@ create_directories() {
 
         print_status "Fetching operator catalogs (this may take several minutes)..."
 
-        # Check if catalog data already exists and is recent (less than 24 hours old)
+        # Check if catalog data already exists and is recent (less than 7 days old)
         if [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
             local catalog_age=$(( $(date +%s) - $(stat -c %Y catalog-data/catalog-index.json 2>/dev/null || echo 0) ))
-            if [ $catalog_age -lt 86400 ]; then # 24 hours = 86400 seconds
-                print_success "Using existing catalog data (less than 24 hours old)"
+            local max_age=$((7 * 24 * 3600))  # 7 days in seconds
+            
+            if [ $catalog_age -lt $max_age ]; then
+                print_success "Using existing catalog data (less than 7 days old)"
                 return 0
             else
-                print_status "Existing catalog data is old, refreshing..."
+                print_status "Existing catalog data is older than 7 days, refreshing..."
             fi
         else
             print_status "No catalog data found, fetching operator catalogs..."
@@ -179,10 +200,16 @@ build_image() {
     print_status "Building container image with $CONTAINER_ENGINE..."
     
     # Build for native architecture (do not force amd64)
-    if $CONTAINER_ENGINE build -t oc-mirror-web-app .; then
-        print_success "Container image built successfully (native arch)"
+    # Use Docker format to support HEALTHCHECK (Podman uses OCI by default which doesn't support HEALTHCHECK)
+    local build_cmd="$CONTAINER_ENGINE build"
+    if [ "$CONTAINER_ENGINE" = "podman" ]; then
+        build_cmd="$build_cmd --format docker"
+    fi
+    
+    if $build_cmd -t oc-mirror-web-app .; then
+        print_success "Container image built successfully"
     else
-        print_error "Failed to build container image (native arch)"
+        print_error "Failed to build container image"
         exit 1
     fi
 }
@@ -194,8 +221,12 @@ run_container() {
     # Check if container is already running
     if $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "oc-mirror-web-app"; then
         print_warning "Container is already running. Stopping it first..."
-        $CONTAINER_ENGINE stop oc-mirror-web-app
-        $CONTAINER_ENGINE rm oc-mirror-web-app
+        # Try graceful stop with timeout
+        if ! $CONTAINER_ENGINE stop -t 30 oc-mirror-web-app 2>/dev/null; then
+            print_warning "Graceful stop failed, attempting force stop..."
+            $CONTAINER_ENGINE stop -t 5 oc-mirror-web-app 2>/dev/null || true
+        fi
+        $CONTAINER_ENGINE rm oc-mirror-web-app 2>/dev/null || true
     fi
     
     # Run the container
@@ -203,12 +234,10 @@ run_container() {
         --name oc-mirror-web-app \
         -p 3000:3001 \
         -v "$(pwd)/data:/app/data:z" \
-        -v "$(pwd)/downloads:/app/downloads:z" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
         -e NODE_ENV=production \
         -e PORT=3001 \
         -e STORAGE_DIR=/app/data \
-        -e DOWNLOADS_DIR=/app/downloads \
         -e OC_MIRROR_CACHE_DIR=/app/data/cache \
         -e LOG_LEVEL=info \
         --restart unless-stopped \
@@ -227,10 +256,10 @@ show_status() {
     print_success "Application is running!"
     echo ""
     echo "🌐 Web Interface: http://localhost:3000"
-    echo "🔧 API Server: http://localhost:3001"
+    echo "🔧 API Server: http://localhost:3000/api (proxied through web interface)"
     echo ""
     echo "📁 Data Directory: $(pwd)/data"
-    echo "📥 Downloads Directory: $(pwd)/downloads"
+    echo "📦 Mirror Storage: $(pwd)/data/mirrors/default → /app/data/mirrors/default (persistent)"
     echo "📋 Container Name: oc-mirror-web-app"
     echo "🔧 Container Engine: $CONTAINER_ENGINE"
     echo "🏗️  System Architecture: $ARCH_NAME"
@@ -303,7 +332,7 @@ case "${1:-}" in
         echo ""
         echo "Catalog Fetching:"
         echo "  By default, the build process skips catalog fetching for faster builds."
-        echo "  Use --fetch-catalogs to fetch operator catalogs for OCP versions 4.15-4.19."
+        echo "  Use --fetch-catalogs to fetch operator catalogs for OCP versions 4.16-4.20."
         echo "  Catalog fetching can take several minutes but provides complete operator data."
         exit 0
         ;;
@@ -323,7 +352,17 @@ case "${1:-}" in
     --stop)
         detect_container_runtime
         print_status "Stopping and removing container..."
-        $CONTAINER_ENGINE stop oc-mirror-web-app 2>/dev/null || true
+        
+        # Try graceful stop first
+        if $CONTAINER_ENGINE stop -t 30 oc-mirror-web-app 2>/dev/null; then
+            print_success "Container stopped gracefully"
+        else
+            # If graceful stop fails, try with shorter timeout and then force
+            print_warning "Graceful stop failed, attempting force stop..."
+            $CONTAINER_ENGINE stop -t 5 oc-mirror-web-app 2>/dev/null || true
+        fi
+        
+        # Remove container
         $CONTAINER_ENGINE rm oc-mirror-web-app 2>/dev/null || true
         print_success "Container stopped and removed"
         exit 0

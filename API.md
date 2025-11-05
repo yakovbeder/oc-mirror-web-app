@@ -1,8 +1,16 @@
 # OC Mirror v2 Web Application - API Documentation
 
+**Current Version: v3.2**
+
 ## Overview
 
 The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift Container Platform mirroring operations. All endpoints are available at `http://localhost:3001/api/` when the application is running.
+
+### Key Features
+- **Persistent Mirror Storage**: Mirror archives are saved to host filesystem and survive container restarts
+- **Custom Mirror Destinations**: Optional subdirectory specification for organized mirror storage
+- **Health Monitoring**: Dedicated health check endpoint for container orchestration
+- **OCP Versions**: Supports OpenShift Container Platform versions 4.16, 4.17, 4.18, 4.19, and 4.20
 
 ## Base URL
 ```
@@ -75,6 +83,17 @@ The application includes comprehensive validation for configuration parameters:
 
 ### System Information
 
+#### GET /api/health
+Health check endpoint for container orchestration and monitoring.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
 #### GET /api/system/info
 Get system information and health status.
 
@@ -95,6 +114,30 @@ Get system information and health status.
 
 #### GET /api/system/status
 Get system health status (alias for /api/system/info).
+
+#### GET /api/system/paths
+Get available system paths for mirror storage and other operations.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "commonPaths": [
+      {
+        "path": "/app/data",
+        "label": "Data Directory",
+        "description": "Persistent - mounted volume, contains configs, operations, logs, cache, and mirrors"
+      },
+      {
+        "path": "/app/data/mirrors",
+        "label": "Mirror Storage",
+        "description": "Persistent - base directory for all mirror archives"
+      }
+    ]
+  }
+}
+```
 
 ### Statistics and Dashboard
 
@@ -263,6 +306,9 @@ Get available OpenShift Container Platform channels.
 #### GET /api/catalogs
 Get available operator catalogs.
 
+**Query Parameters:**
+- `version` (optional): Filter by OCP version (4.16, 4.17, 4.18, 4.19, 4.20)
+
 **Response:**
 ```json
 {
@@ -272,11 +318,33 @@ Get available operator catalogs.
       "name": "redhat-operator-index",
       "url": "registry.redhat.io/redhat/redhat-operator-index",
       "description": "Red Hat certified operators",
-      "ocpVersion": "4.18"
+      "ocpVersion": "4.20",
+      "type": "redhat"
+    },
+    {
+      "name": "certified-operator-index",
+      "url": "registry.redhat.io/redhat/certified-operator-index",
+      "description": "Certified operators",
+      "ocpVersion": "4.20",
+      "type": "certified"
+    },
+    {
+      "name": "community-operator-index",
+      "url": "registry.redhat.io/redhat/community-operator-index",
+      "description": "Community operators",
+      "ocpVersion": "4.20",
+      "type": "community"
     }
   ]
 }
 ```
+
+**Supported OCP Versions:**
+- 4.16
+- 4.17
+- 4.18
+- 4.19
+- 4.20
 
 #### GET /api/operators
 Get available operators from catalogs.
@@ -333,14 +401,22 @@ Get list of all operations.
     {
       "id": "operation-id",
       "name": "Operation Name",
-      "status": "running",
-      "startTime": "2024-01-15T10:30:00Z",
-      "endTime": null,
-      "configId": "config-id"
+      "status": "success",
+      "startedAt": "2024-01-15T10:30:00Z",
+      "completedAt": "2024-01-15T10:45:00Z",
+      "duration": 900,
+      "configFile": "my-config.yaml",
+      "mirrorDestination": "/app/data/mirrors/default"
     }
   ]
 }
 ```
+
+**Operation Status Values:**
+- `running` - Operation is currently executing
+- `success` - Operation completed successfully
+- `failed` - Operation failed with errors
+- `stopped` - Operation was manually stopped
 
 #### GET /api/operations/history
 Get operation history (alias for /api/operations).
@@ -352,9 +428,18 @@ Start a new mirror operation.
 ```json
 {
   "name": "Operation Name",
-  "configId": "config-id"
+  "configId": "config-id",
+  "mirrorDestinationSubdir": "default"
 }
 ```
+
+**Request Parameters:**
+- `name` (string, required): Name for the operation
+- `configId` (string, required): Configuration file name (e.g., "my-config.yaml")
+- `mirrorDestinationSubdir` (string, optional): Subdirectory name within `/app/data/mirrors/` where mirror files will be saved. 
+  - If not provided or empty, defaults to `default`
+  - Must be alphanumeric with dashes and underscores only (no slashes or special characters)
+  - Examples: `default`, `odf`, `production`, `test-123`
 
 **Response:**
 ```json
@@ -362,10 +447,38 @@ Start a new mirror operation.
   "success": true,
   "data": {
     "id": "operation-id",
-    "message": "Operation started successfully"
+    "message": "Operation started successfully",
+    "mirrorDestination": "/app/data/mirrors/default"
   }
 }
 ```
+
+**Error Response (Invalid Subdirectory):**
+```json
+{
+  "success": false,
+  "error": "Subdirectory name contains invalid characters",
+  "provided": "invalid/path",
+  "help": "Use only letters, numbers, dashes (-), and underscores (_)"
+}
+```
+
+**Error Response (Permission Denied):**
+```json
+{
+  "success": false,
+  "error": "Mirror destination directory exists but is not writable",
+  "path": "/app/data/mirrors/custom",
+  "code": "EACCES",
+  "details": "Permission denied",
+  "help": "The directory exists but the container cannot write to it. Check permissions on the host."
+}
+```
+
+**Notes:**
+- Mirror archives are saved persistently to the host filesystem at `data/mirrors/{subdirectory}/` on the host
+- Files survive container restarts
+- The full host path is displayed in the operation details after completion
 
 #### GET /api/operations/:id/details
 Get detailed information about a specific operation.
@@ -380,14 +493,21 @@ Get detailed information about a specific operation.
   "data": {
     "id": "operation-id",
     "name": "Operation Name",
-    "status": "running",
-    "startTime": "2024-01-15T10:30:00Z",
-    "endTime": null,
+    "status": "success",
+    "startedAt": "2024-01-15T10:30:00Z",
+    "completedAt": "2024-01-15T10:45:00Z",
+    "duration": 900,
+    "configFile": "my-config.yaml",
+    "mirrorDestination": "/app/data/mirrors/default",
     "config": { ... },
     "logs": "..."
   }
 }
 ```
+
+**Response Fields:**
+- `mirrorDestination`: The full container path where mirror files are saved (e.g., `/app/data/mirrors/default`)
+- Host path is `{project-root}/data/mirrors/{subdirectory}/` where `{project-root}` is typically the application directory
 
 #### GET /api/operations/:id/logs
 Get operation logs.
@@ -412,6 +532,8 @@ Get real-time operation log stream (Server-Sent Events).
 - `id`: Operation ID
 
 **Response:** Server-Sent Events stream
+
+**Note:** Logs are persisted to `data/logs/` directory and survive container restarts.
 
 #### POST /api/operations/:id/stop
 Stop a running operation.
@@ -526,6 +648,9 @@ Clean up old log files.
 | `INVALID_YAML` | Invalid YAML format in uploaded file |
 | `INVALID_KIND` | Invalid ImageSetConfiguration kind |
 | `INVALID_API_VERSION` | Invalid API version in uploaded file |
+| `EACCES` | Permission denied (file system access error) |
+| `INVALID_SUBDIRECTORY` | Invalid subdirectory name (contains path separators or invalid characters) |
+| `SUBDIRECTORY_NOT_WRITABLE` | Mirror destination subdirectory exists but is not writable |
 | `SYSTEM_ERROR` | Internal system error |
 
 ## Rate Limiting
@@ -538,7 +663,12 @@ The API supports CORS and can be accessed from web browsers. All origins are all
 
 ## Health Check
 
-The application provides a health check endpoint at `/api/system/info` that returns system status and can be used by load balancers or monitoring systems.
+The application provides multiple health check endpoints:
+
+- **`/api/health`**: Simple JSON health check endpoint for container orchestration (Docker HEALTHCHECK, Kubernetes liveness probes, etc.)
+- **`/api/system/info`**: Detailed system information including versions, architecture, and resource usage
+
+Both endpoints can be used by load balancers, monitoring systems, and container orchestration platforms.
 
 ## Examples
 
@@ -548,10 +678,21 @@ The application provides a health check endpoint at `/api/system/info` that retu
 # Get system information
 curl http://localhost:3001/api/system/info
 
-# Start an operation
+# Health check
+curl http://localhost:3001/api/health
+
+# Get system paths
+curl http://localhost:3001/api/system/paths
+
+# Start an operation with default mirror destination
 curl -X POST http://localhost:3001/api/operations/start \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Operation", "configId": "config-123"}'
+  -d '{"name": "My Operation", "configId": "my-config.yaml"}'
+
+# Start an operation with custom mirror destination subdirectory
+curl -X POST http://localhost:3001/api/operations/start \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Operation", "configId": "my-config.yaml", "mirrorDestinationSubdir": "odf"}'
 
 # Get operation logs
 curl http://localhost:3001/api/operations/operation-123/logs
@@ -564,7 +705,7 @@ curl http://localhost:3001/api/operations/operation-123/logs
 const response = await fetch('/api/operators');
 const data = await response.json();
 
-// Start operation
+// Start operation with default mirror destination
 const startResponse = await fetch('/api/operations/start', {
   method: 'POST',
   headers: {
@@ -572,7 +713,25 @@ const startResponse = await fetch('/api/operations/start', {
   },
   body: JSON.stringify({
     name: 'My Operation',
-    configId: 'config-123'
+    configId: 'my-config.yaml'
   })
 });
+
+// Start operation with custom mirror destination subdirectory
+const startResponseCustom = await fetch('/api/operations/start', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'ODF Mirror Operation',
+    configId: 'odf-config.yaml',
+    mirrorDestinationSubdir: 'odf'
+  })
+});
+
+// Check health
+const healthResponse = await fetch('/api/health');
+const healthData = await healthResponse.json();
+console.log('Health status:', healthData.status);
 ``` 

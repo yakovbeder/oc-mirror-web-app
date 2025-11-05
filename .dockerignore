@@ -25,3 +25,7 @@ data/cache/
 # Exclude runtime data directories (will be created at runtime)
 data/logs/
 data/operations/
+
+# Exclude mirror content (contains large generated files)
+data/mirrors/*
+!data/mirrors/.gitkeep
