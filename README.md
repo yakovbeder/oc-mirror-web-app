@@ -427,7 +427,7 @@ mirror:
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ### Mirror Configuration
-![Mirror Configuration](docs/screenshots/mirror-configuration.jpg)
+![Mirror Configuration](docs/screenshots/mirror-configuration.png)
 
 ### Mirror Operations
 ![Mirror Operations](docs/screenshots/mirror-operations.png)
