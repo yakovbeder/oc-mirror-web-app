@@ -90,7 +90,7 @@ chmod +x quay-run.sh
 ## 📋 What's Included
 
 The containerized version includes:
-- ✅ **Node.js 20** runtime
+- ✅ **Node.js 22** runtime
 - ✅ **OpenShift CLI (oc)** 
 - ✅ **oc-mirror v2** 
 - ✅ **All dependencies** pre-installed

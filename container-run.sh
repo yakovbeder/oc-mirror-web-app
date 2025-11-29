@@ -82,7 +82,7 @@ fix_permissions() {
         return 0
     fi
     
-    # Check if directories are already owned by container user (UID 1000 - node user in node:20-slim image)
+    # Check if directories are already owned by container user (UID 1000 - node user in node:22-slim image)
     local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
     
     # Container runs as node user (UID 1000), check if ownership needs fixing

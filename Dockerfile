@@ -1,5 +1,5 @@
 # Multi-stage build for production
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 # Build arguments for metadata (all optional with defaults)
 ARG BUILD_DATE=""
@@ -40,7 +40,7 @@ RUN npm run lint:fix || true
 RUN npm run build
 
 # Production stage
-FROM node:20-slim AS production
+FROM node:22-slim AS production
 
 # Build arguments for metadata (all optional with defaults)
 ARG BUILD_DATE=""

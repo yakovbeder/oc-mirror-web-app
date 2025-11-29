@@ -523,7 +523,7 @@ For issues and questions:
 
 ### Container Runtime Requirements
 - **Podman**: 4.0+ ✅ Required
-- **Node.js**: 18+ (included in container)
+- **Node.js**: 22 (included in container)
 
 ### Architecture Support
 - **AMD64 (x86_64)**: ✅ Fully supported
