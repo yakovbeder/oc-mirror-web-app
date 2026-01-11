@@ -1,6 +1,6 @@
 # Quick Start Guide - OC Mirror v2 Web Application
 
-**Current Version: v3.2**
+**Current Version: v3.3**
 
 ## 🚀 Containerized Deployment (Recommended)
 
@@ -103,7 +103,7 @@ The containerized version includes:
 - ✅ **Auto-correction features** (automatically fixes invalid configurations)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
-- ✅ **Version 3.2 features** (YAML upload, configuration deletion, enhanced UI/UX, improved error handling, smart validation, OCP 4.20 support, optimized catalog fetching, persistent mirror storage, Docker HEALTHCHECK, graceful shutdown)
+- ✅ **Version 3.3 features** (archiveSize option, improved tooltips, YAML upload, configuration deletion, enhanced UI/UX, improved error handling, smart validation, OCP 4.20 support, optimized catalog fetching, persistent mirror storage, Docker HEALTHCHECK, graceful shutdown)
 
 ## 🎯 Smart Validation Features
 
@@ -114,6 +114,20 @@ The application includes advanced validation to help you create correct configur
 - **Range Validation**: Validates that min version ≤ max version
 - **Auto-correction**: Automatically fixes invalid ranges by swapping min/max values
 - **Real-time Feedback**: Toast notifications provide immediate validation feedback
+
+### Configuration Examples
+```yaml
+# ✅ Complete configuration with archiveSize
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+archiveSize: 4  # Optional: limit archive files to 4 GiB
+mirror:
+  platform:
+    channels:
+    - name: stable-4.19
+      minVersion: 4.19.1
+      maxVersion: 4.19.9
+```
 
 ### Validation Examples
 ```yaml

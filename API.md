@@ -1,12 +1,13 @@
 # OC Mirror v2 Web Application - API Documentation
 
-**Current Version: v3.2**
+**Current Version: v3.3**
 
 ## Overview
 
 The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift Container Platform mirroring operations. All endpoints are available at `http://localhost:3001/api/` when the application is running.
 
 ### Key Features
+- **Archive Size Control**: Optional `archiveSize` parameter to limit archive file sizes (in GiB)
 - **Persistent Mirror Storage**: Mirror archives are saved to host filesystem and survive container restarts
 - **Custom Mirror Destinations**: Optional subdirectory specification for organized mirror storage
 - **Health Monitoring**: Dedicated health check endpoint for container orchestration
@@ -207,10 +208,14 @@ Save a new configuration.
   "config": {
     "kind": "ImageSetConfiguration",
     "apiVersion": "mirror.openshift.io/v2alpha1",
+    "archiveSize": 4,
     "mirror": { ... }
   }
 }
 ```
+
+**Configuration Parameters:**
+- `archiveSize` (number, optional): Maximum size in GiB for archive files when mirroring to disk. Leave empty/omit to use default behavior.
 
 **Response:**
 ```json

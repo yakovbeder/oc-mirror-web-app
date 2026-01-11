@@ -2,7 +2,7 @@
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. This application provides a user-friendly way to create, manage, and execute mirror configurations without requiring command-line expertise.
 
-**Current Version: v3.2**
+**Current Version: v3.3**
 
 ## 📋 Table of Contents
 
@@ -217,6 +217,7 @@ chmod +x quay-run.sh
 
 ### 🎯 Core Functionality
 - **Configuration Management**: Create, edit, and manage mirror configurations
+- **Archive Size Control**: Optional `archiveSize` parameter to limit archive file sizes when mirroring to disk
 - **YAML Upload & Import**: Upload existing ImageSetConfiguration YAML files with validation and conflict resolution
 - **Configuration Deletion**: Delete unwanted configuration files with confirmation dialogs
 - **Smart Version Validation**: Real-time validation for platform and operator channel version ranges
@@ -349,6 +350,7 @@ The application generates clean oc-mirror v2 configurations:
 ```yaml
 kind: ImageSetConfiguration
 apiVersion: mirror.openshift.io/v2alpha1
+archiveSize: 4  # Optional: Maximum archive size in GiB
 mirror:
   platform:
     channels:
@@ -370,6 +372,7 @@ mirror:
 ```
 
 ### 📝 Configuration Features
+- ✅ **Archive Size Control**: Optional `archiveSize` parameter to limit archive file sizes (in GiB)
 - ✅ **Cache-based Storage**: Local cache for efficient operations
 - ✅ **Direct Package Configuration**: Streamlined operator configuration
 - ✅ **Enhanced Validation**: Better validation and error handling
