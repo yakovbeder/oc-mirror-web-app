@@ -201,9 +201,22 @@ process_catalog_data() {
                 operator_name=$(jq -cs -r '.[] | select(.schema == "olm.package") | .name // empty' "$json_file" 2>/dev/null)
                 default_channel=$(jq -cs -r '.[] | select(.schema == "olm.package") | .defaultChannel // empty' "$json_file" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channels using the pattern from backup (get all names, filter out operator name)
-                    # Look for entries that are channels (not the operator name itself)
-                    channels=$(jq -cs -r '.[] | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | grep -v "^${operator_name}$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    # Extract only channel names from olm.channel schema objects (not bundle names from olm.bundle)
+                    channels=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    
+                    # Also check for separate channel files (e.g., stable-3.9.json, stable-3.10.json, quay-v3.5.json)
+                    # These files contain olm.channel schema objects for additional channels
+                    for channel_file in "${operator_dir}"/*.json; do
+                        if [ -f "$channel_file" ] && [ "$channel_file" != "$catalog_json" ] && [ "$(basename "$channel_file")" != "released-bundles.json" ]; then
+                            # Extract channel name from separate channel file
+                            local extra_channel=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$channel_file" 2>/dev/null | head -1)
+                            if [ -n "$extra_channel" ] && [ "$extra_channel" != "null" ]; then
+                                channels="$channels $extra_channel"
+                            fi
+                        fi
+                    done
+                    # Remove duplicates and sort
+                    channels=$(echo "$channels" | tr ' ' '\n' | grep -v "^$" | sort -V | uniq | tr '\n' ' ' | sed 's/ $//')
                     
                     # If no channels found, try alternative approach looking for channel entries
                     if [ -z "$channels" ]; then
@@ -217,9 +230,22 @@ process_catalog_data() {
                 operator_name=$(jq -cs -r '.[] | select(.schema == "olm.package") | .name // empty' "$json_file" 2>/dev/null)
                 default_channel=$(jq -cs -r '.[] | select(.schema == "olm.package") | .defaultChannel // empty' "$json_file" 2>/dev/null)
                 if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channels using the pattern from backup (get all names, filter out operator name)
-                    # Look for entries that are channels (not the operator name itself)
-                    channels=$(jq -cs -r '.[] | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | grep -v "^${operator_name}$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    # Extract only channel names from olm.channel schema objects (not bundle names from olm.bundle)
+                    channels=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
+                    
+                    # Also check for separate channel files (e.g., stable-3.9.json, stable-3.10.json, quay-v3.5.json)
+                    # These files contain olm.channel schema objects for additional channels
+                    for channel_file in "${operator_dir}"/*.json; do
+                        if [ -f "$channel_file" ] && [ "$channel_file" != "$index_json" ] && [ "$(basename "$channel_file")" != "released-bundles.json" ]; then
+                            # Extract channel name from separate channel file
+                            local extra_channel=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$channel_file" 2>/dev/null | head -1)
+                            if [ -n "$extra_channel" ] && [ "$extra_channel" != "null" ]; then
+                                channels="$channels $extra_channel"
+                            fi
+                        fi
+                    done
+                    # Remove duplicates and sort
+                    channels=$(echo "$channels" | tr ' ' '\n' | grep -v "^$" | sort -V | uniq | tr '\n' ' ' | sed 's/ $//')
                     
                     # If no channels found, try alternative approach looking for channel entries
                     if [ -z "$channels" ]; then
