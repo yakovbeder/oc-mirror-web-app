@@ -9,6 +9,7 @@ const MirrorConfig = () => {
   const [config, setConfig] = useState({
     kind: 'ImageSetConfiguration',
     apiVersion: 'mirror.openshift.io/v2alpha1',
+    archiveSize: '',  // Size in GiB - optional parameter
     mirror: {
       platform: {
         channels: [],
@@ -693,6 +694,11 @@ const MirrorConfig = () => {
       }
     };
 
+    // Add archiveSize only if set
+    if (config.archiveSize && parseInt(config.archiveSize) > 0) {
+      cleanConfig.archiveSize = parseInt(config.archiveSize);
+    }
+
     // Only add additionalImages if it has content
     if (config.mirror.additionalImages && config.mirror.additionalImages.length > 0) {
       cleanConfig.mirror.additionalImages = config.mirror.additionalImages;
@@ -1253,6 +1259,40 @@ const MirrorConfig = () => {
             >
               📋 Copy YAML
             </button>
+          </div>
+          
+          <div className="card" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Archive Size (GiB)
+                <span 
+                  title="Maximum size (in GiB) for archive files when mirroring to disk. Leave empty to use default behavior."
+                  onClick={() => toast.info('Maximum size (in GiB) for archive files when mirroring to disk. Leave empty to use default behavior.', { autoClose: 5000 })}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    border: '1.5px solid #007bff',
+                    color: '#007bff',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >?</span>
+              </label>
+              <input 
+                type="number" 
+                className="form-control"
+                value={config.archiveSize}
+                onChange={(e) => setConfig(prev => ({ ...prev, archiveSize: e.target.value }))}
+                min="1"
+                placeholder="e.g., 4"
+                style={{ maxWidth: '200px' }}
+              />
+            </div>
           </div>
           
           <div className="yaml-preview-container">

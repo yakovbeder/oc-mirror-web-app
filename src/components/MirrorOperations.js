@@ -31,7 +31,6 @@ const MirrorOperations = () => {
   
   // Mirror destination subdirectory state
   const [mirrorDestinationSubdir, setMirrorDestinationSubdir] = useState('');
-  const [showTooltip, setShowTooltip] = useState(false);
   const [notifiedOperations, setNotifiedOperations] = useState(new Set());
   const [showMirrorLocation, setShowMirrorLocation] = useState({});
 
@@ -625,21 +624,20 @@ const MirrorOperations = () => {
                 style={{ 
                   cursor: 'pointer', 
                   color: '#007bff', 
-                  fontSize: '0.9rem',
+                  fontSize: '12px',
                   fontWeight: 'bold',
                   width: '18px',
                   height: '18px',
                   borderRadius: '50%',
-                  border: '1px solid #007bff',
+                  border: '1.5px solid #007bff',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: '#f0f8ff',
                   lineHeight: '1',
                   flexShrink: 0
                 }}
-                onClick={() => setShowTooltip(!showTooltip)}
-                title="Click for help"
+                onClick={() => toast.info('Mirror files are saved to data/mirrors/<subdirectory>. Leave empty for "default". The subdirectory is created automatically with correct permissions.', { autoClose: 5000 })}
+                title="Mirror files are saved to data/mirrors/<subdirectory>. Leave empty for 'default'. Click for more info."
               >
                 ?
               </span>
@@ -668,46 +666,6 @@ const MirrorOperations = () => {
           >
             {loading ? <div className="loading"></div> : '▶️ Start Operation'}
           </button>
-          {showTooltip && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: '0',
-              marginTop: '0.5rem',
-              padding: '0.75rem',
-              backgroundColor: '#fff',
-              border: '1px solid #dee2e6',
-              borderRadius: '4px',
-              fontSize: '0.85rem',
-              lineHeight: '1.6',
-              zIndex: 1000,
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              maxWidth: '400px',
-              width: 'max-content'
-            }}>
-              <strong>How it works:</strong>
-              <br />
-              • Mirror files are saved to <code>data/mirrors/</code> on your host (this path is fixed and cannot be changed)
-              <br />
-              • If you leave this field empty, files are saved to <code>data/mirrors/default</code>
-              <br />
-              • If you enter a subdirectory name (e.g., <code>odf</code>), files are saved to <code>data/mirrors/odf</code>
-              <br />
-              • The subdirectory is created automatically if it doesn't exist, with correct permissions
-              <br />
-              <br />
-              <strong>Examples:</strong>
-              <br />
-              • Empty field → <code>data/mirrors/default</code>
-              <br />
-              • Enter <code>odf</code> → <code>data/mirrors/odf</code>
-              <br />
-              • Enter <code>production</code> → <code>data/mirrors/production</code>
-              <br />
-              <br />
-              <strong>Note:</strong> All files persist across container restarts since they are stored on your host filesystem.
-            </div>
-          )}
         </div>
         
         {runningOperation && (
