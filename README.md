@@ -63,7 +63,7 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
   - [Architecture Support](#architecture-support)
 
 ### 🔗 Related Tools
-- [Related Tools](#-related-tools)
+- [Related Tools](#-related-tools-1)
 
 ---
 
