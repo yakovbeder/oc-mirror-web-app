@@ -496,6 +496,12 @@ sudo chmod -R 777 data/
 
 **Verification**: After fixing permissions, try saving a configuration again. The popup should show "Configuration saved successfully".
 
+### Invalid GPG Signature for Operator Index Images
+
+**Problem**: Invalid GPG signature errors when mirroring `certified-operator-index`, `redhat-marketplace-index`, or `community-operator-index` images.
+
+**Solution**: See the Red Hat Knowledge Base article for the fix: [https://access.redhat.com/solutions/6542281](https://access.redhat.com/solutions/6542281)
+
 ### Other Common Issues
 
 For additional troubleshooting steps, see the [Troubleshooting section in QUICKSTART.md](QUICKSTART.md#-troubleshooting).
