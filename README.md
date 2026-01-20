@@ -24,10 +24,7 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
   - [Technical Features](#-technical-features)
   - [Security Features](#️-security-features)
 - [Application Structure](#-application-structure)
-- [Download System](#-download-system)
-  - [Dynamic Progress Tracking](#dynamic-progress-tracking)
-  - [Download Process](#download-process)
-  - [Technical Implementation](#technical-implementation)
+- [Persistent Mirror Storage](#-persistent-mirror-storage)
 
 ### 🔄 Technical Details
 - [oc-mirror v2 Support](#-oc-mirror-v2-support)
