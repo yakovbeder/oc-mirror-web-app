@@ -10,6 +10,10 @@ set -e
 # - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
 
+# Image name (use localhost/ prefix to prevent Podman from searching registries)
+IMAGE_NAME="localhost/oc-mirror-web-app"
+CONTAINER_NAME="oc-mirror-web-app"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -215,7 +219,7 @@ build_image() {
         build_cmd="$build_cmd --no-cache"
     fi
     
-    if $build_cmd -t oc-mirror-web-app .; then
+    if $build_cmd -t "$IMAGE_NAME" .; then
         print_success "Container image built successfully"
     else
         print_error "Failed to build container image"
@@ -223,24 +227,40 @@ build_image() {
     fi
 }
 
+# Check if image exists locally
+check_image_exists() {
+    if ! $CONTAINER_ENGINE image exists "$IMAGE_NAME" 2>/dev/null; then
+        print_error "Image '$IMAGE_NAME' not found locally."
+        print_error "Please build the image first with: $0 --build-only"
+        exit 1
+    fi
+    print_success "Image '$IMAGE_NAME' found locally"
+}
+
 # Run the container
 run_container() {
     print_status "Starting OC Mirror Web Application container with $CONTAINER_ENGINE..."
     
     # Check if container is already running
-    if $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "oc-mirror-web-app"; then
+    if $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "$CONTAINER_NAME"; then
         print_warning "Container is already running. Stopping it first..."
         # Try graceful stop with timeout
-        if ! $CONTAINER_ENGINE stop -t 30 oc-mirror-web-app 2>/dev/null; then
+        if ! $CONTAINER_ENGINE stop -t 30 "$CONTAINER_NAME" 2>/dev/null; then
             print_warning "Graceful stop failed, attempting force stop..."
-            $CONTAINER_ENGINE stop -t 5 oc-mirror-web-app 2>/dev/null || true
+            $CONTAINER_ENGINE stop -t 5 "$CONTAINER_NAME" 2>/dev/null || true
         fi
-        $CONTAINER_ENGINE rm oc-mirror-web-app 2>/dev/null || true
+        $CONTAINER_ENGINE rm "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+    
+    # Also check for stopped container with same name
+    if $CONTAINER_ENGINE ps -a --format "table {{.Names}}" | grep -q "$CONTAINER_NAME"; then
+        print_status "Removing stopped container..."
+        $CONTAINER_ENGINE rm "$CONTAINER_NAME" 2>/dev/null || true
     fi
     
     # Run the container
     $CONTAINER_ENGINE run -d \
-        --name oc-mirror-web-app \
+        --name "$CONTAINER_NAME" \
         -p 3000:3001 \
         -v "$(pwd)/data:/app/data:z" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
@@ -250,7 +270,7 @@ run_container() {
         -e OC_MIRROR_CACHE_DIR=/app/data/cache \
         -e LOG_LEVEL=info \
         --restart unless-stopped \
-        oc-mirror-web-app
+        "$IMAGE_NAME"
     
     print_success "Container started successfully"
 }
@@ -269,18 +289,19 @@ show_status() {
     echo ""
     echo "📁 Data Directory: $(pwd)/data"
     echo "📦 Mirror Storage: $(pwd)/data/mirrors/default → /app/data/mirrors/default (persistent)"
-    echo "📋 Container Name: oc-mirror-web-app"
+    echo "📋 Container Name: $CONTAINER_NAME"
+    echo "🐳 Image Name: $IMAGE_NAME"
     echo "🔧 Container Engine: $CONTAINER_ENGINE"
     echo "🏗️  System Architecture: $ARCH_NAME"
     echo ""
     echo "📊 Container Status:"
-    $CONTAINER_ENGINE ps --filter "name=oc-mirror-web-app" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    $CONTAINER_ENGINE ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     echo "📝 Useful Commands:"
-    echo "  View logs:     $CONTAINER_ENGINE logs -f oc-mirror-web-app"
-    echo "  Stop app:      $CONTAINER_ENGINE stop oc-mirror-web-app"
-    echo "  Remove app:    $CONTAINER_ENGINE rm oc-mirror-web-app"
-    echo "  Shell access:  $CONTAINER_ENGINE exec -it oc-mirror-web-app /bin/sh"
+    echo "  View logs:     $CONTAINER_ENGINE logs -f $CONTAINER_NAME"
+    echo "  Stop app:      $CONTAINER_ENGINE stop $CONTAINER_NAME"
+    echo "  Remove app:    $CONTAINER_ENGINE rm $CONTAINER_NAME"
+    echo "  Shell access:  $CONTAINER_ENGINE exec -it $CONTAINER_NAME /bin/sh"
     echo ""
 }
 
@@ -357,6 +378,7 @@ case "${1:-}" in
     --run-only)
         check_container_runtime
         detect_system_architecture
+        check_image_exists
         run_container
         show_status
         exit 0
@@ -366,22 +388,22 @@ case "${1:-}" in
         print_status "Stopping and removing container..."
         
         # Try graceful stop first
-        if $CONTAINER_ENGINE stop -t 30 oc-mirror-web-app 2>/dev/null; then
+        if $CONTAINER_ENGINE stop -t 30 "$CONTAINER_NAME" 2>/dev/null; then
             print_success "Container stopped gracefully"
         else
             # If graceful stop fails, try with shorter timeout and then force
             print_warning "Graceful stop failed, attempting force stop..."
-            $CONTAINER_ENGINE stop -t 5 oc-mirror-web-app 2>/dev/null || true
+            $CONTAINER_ENGINE stop -t 5 "$CONTAINER_NAME" 2>/dev/null || true
         fi
         
         # Remove container
-        $CONTAINER_ENGINE rm oc-mirror-web-app 2>/dev/null || true
+        $CONTAINER_ENGINE rm "$CONTAINER_NAME" 2>/dev/null || true
         print_success "Container stopped and removed"
         exit 0
         ;;
     --logs)
         detect_container_runtime
-        $CONTAINER_ENGINE logs -f oc-mirror-web-app
+        $CONTAINER_ENGINE logs -f "$CONTAINER_NAME"
         exit 0
         ;;
     --fetch-catalogs)
