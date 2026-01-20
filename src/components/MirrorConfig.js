@@ -375,17 +375,44 @@ const MirrorConfig = () => {
   };
 
   const removePackageFromOperator = (operatorIndex, packageIndex) => {
-    setConfig(prev => ({
-      ...prev,
-      mirror: {
-        ...prev.mirror,
-        operators: prev.mirror.operators.map((op, i) => 
-          i === operatorIndex 
-            ? { ...op, packages: op.packages.filter((_, pIndex) => pIndex !== packageIndex) }
-            : op
-        )
-      }
-    }));
+    const operator = config.mirror.operators[operatorIndex];
+    const packageToRemove = operator.packages[packageIndex];
+    
+    setConfig(prev => {
+      const updatedOperators = prev.mirror.operators.map((op, i) => {
+        if (i === operatorIndex) {
+          // Remove the selected package
+          const updatedPackages = op.packages.filter((_, pIndex) => pIndex !== packageIndex);
+          
+          // If removing a base operator, also remove dependencies that were auto-added only by it
+          if (packageToRemove && !packageToRemove.isDependency) {
+            const baseOperatorName = packageToRemove.name;
+            // Remove packages that were auto-added by this operator and have no other dependencies
+            const cleanedPackages = updatedPackages.filter(pkg => {
+              // Keep if it's not a dependency, or if it's a dependency but not auto-added by the removed operator
+              if (!pkg.isDependency || !pkg.autoAddedBy) {
+                return true;
+              }
+              // Remove if it was auto-added by the operator being removed
+              return pkg.autoAddedBy !== baseOperatorName;
+            });
+            
+            return { ...op, packages: cleanedPackages };
+          }
+          
+          return { ...op, packages: updatedPackages };
+        }
+        return op;
+      });
+      
+      return {
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          operators: updatedOperators
+        }
+      };
+    });
   };
 
   const updateOperatorPackage = async (operatorIndex, packageIndex, field, value) => {
@@ -406,10 +433,90 @@ const MirrorConfig = () => {
       }
     }));
 
-    // If updating package name, fetch channels for the new package
+    // If updating package name, fetch channels for the new package and dependencies
     if (field === 'name' && value) {
       const operator = config.mirror.operators[operatorIndex];
       await fetchOperatorChannels(value, operator.catalog);
+      
+      // Fetch and auto-add dependencies
+      try {
+        const catalogVersion = operator.catalog.split(':').pop() || 'v4.19';
+        const dependenciesRes = await axios.get(`/api/operators/${value}/dependencies`, {
+          params: { catalogUrl: operator.catalog }
+        });
+        
+        if (dependenciesRes.data && dependenciesRes.data.dependencies && dependenciesRes.data.dependencies.length > 0) {
+          const dependencies = dependenciesRes.data.dependencies;
+          
+          // Determine default channel from catalog version (e.g., v4.19 -> stable-4.19)
+          const versionMatch = catalogVersion.match(/v?(\d+\.\d+)/);
+          const defaultChannelName = versionMatch ? `stable-${versionMatch[1]}` : 'stable';
+          
+          // Use functional update to get latest state and add dependencies
+          setConfig(prev => {
+            const existingPackageNames = new Set(
+              prev.mirror.operators[operatorIndex].packages.map(pkg => pkg.name).filter(Boolean)
+            );
+            
+            // Add dependencies that don't already exist
+            const newDependencyPackages = dependencies
+              .filter(dep => !existingPackageNames.has(dep.packageName))
+              .map(dep => {
+                // Use dependency's defaultChannel if available, otherwise use catalog version-based channel
+                const channelName = dep.defaultChannel || defaultChannelName;
+                return {
+                  name: dep.packageName,
+                  channels: [{
+                    name: channelName,
+                    minVersion: '',
+                    maxVersion: ''
+                  }],
+                  autoAddedBy: value, // Track which operator this dependency was added for
+                  isDependency: true
+                };
+              });
+            
+            if (newDependencyPackages.length > 0) {
+              // Fetch channels for newly added dependencies asynchronously
+              setTimeout(async () => {
+                for (const depPkg of newDependencyPackages) {
+                  await fetchOperatorChannels(depPkg.name, operator.catalog);
+                }
+              }, 0);
+              
+              toast.success(`Auto-added ${newDependencyPackages.length} dependency package(s) for ${value}`, {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+              });
+              
+              return {
+                ...prev,
+                mirror: {
+                  ...prev.mirror,
+                  operators: prev.mirror.operators.map((op, i) => 
+                    i === operatorIndex 
+                      ? { 
+                          ...op, 
+                          packages: [...op.packages, ...newDependencyPackages]
+                        }
+                      : op
+                  )
+                }
+              };
+            }
+            
+            return prev; // No changes if no new dependencies
+          });
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(`Error fetching dependencies for ${value}:`, error);
+        // Don't show error toast - dependencies are optional
+      }
     }
   };
 
@@ -999,7 +1106,14 @@ const MirrorConfig = () => {
               {operator.packages.map((pkg, pkgIndex) => (
                 <div key={pkgIndex} className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
                   <div className="flex-between">
-                    <h6>Operator {pkgIndex + 1}</h6>
+                    <h6 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      Operator {pkgIndex + 1}
+                      {pkg.isDependency && pkg.autoAddedBy && (
+                        <span className="badge-auto-added" title={`Auto-added dependency for ${pkg.autoAddedBy}`}>
+                          Auto-added
+                        </span>
+                      )}
+                    </h6>
                     <button 
                       className="btn btn-danger" 
                       onClick={() => removePackageFromOperator(opIndex, pkgIndex)}

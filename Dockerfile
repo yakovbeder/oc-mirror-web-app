@@ -126,16 +126,19 @@ COPY --from=builder /app/build ./build
 COPY server ./server
 
 # Copy pre-fetched catalog data - only essential files (~2.4MB instead of ~2.4GB)
-# These files contain all operator information: names, channels, defaultChannel
+# These files contain all operator information: names, channels, defaultChannel, and dependencies
 # Temporarily copy entire catalog-data from builder stage to filter essential files
 COPY --from=builder /app/catalog-data /tmp/builder-catalog
 
-# Extract only essential files: catalog-index.json and operators.json (excludes large configs/ directories ~2.4GB)
+# Extract only essential files: catalog-index.json, operators.json, and dependencies.json
+# (excludes large configs/ directories ~2.4GB)
 # This reduces image size from ~2.4GB to ~2.4MB for catalog data while preserving all functionality
 RUN mkdir -p ./catalog-data && \
     (cp /tmp/builder-catalog/catalog-index.json ./catalog-data/ 2>/dev/null || \
      echo '{"generated_at":"","ocp_versions":[],"catalog_types":[],"catalogs":[]}' > ./catalog-data/catalog-index.json) && \
-    find /tmp/builder-catalog -type f -name "operators.json" ! -path "*/configs/*" 2>/dev/null | while read file; do \
+    (cp /tmp/builder-catalog/dependencies.json ./catalog-data/ 2>/dev/null || \
+     echo '{}' > ./catalog-data/dependencies.json) && \
+    find /tmp/builder-catalog -type f \( -name "operators.json" -o -name "dependencies.json" \) ! -path "*/configs/*" 2>/dev/null | while read file; do \
       rel_path=$(echo "$file" | sed 's|/tmp/builder-catalog/||'); \
       mkdir -p "./catalog-data/$(dirname "$rel_path")"; \
       cp "$file" "./catalog-data/$rel_path"; \

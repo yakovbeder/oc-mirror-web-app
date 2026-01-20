@@ -519,6 +519,139 @@ async function getActualChannelsFromCatalog(catalogType, catalogVersion, operato
   }
 }
 
+// Cache for pre-fetched dependencies data
+let dependenciesDataCache = null;
+
+// Function to load pre-fetched dependencies data from dependencies.json
+async function loadDependenciesData() {
+  if (dependenciesDataCache) {
+    return dependenciesDataCache;
+  }
+  
+  try {
+    const path = require('path');
+    const fs = require('fs').promises;
+    
+    // Try to load the master dependencies.json file
+    const dependenciesPath = path.join(__dirname, '../catalog-data/dependencies.json');
+    const content = await fs.readFile(dependenciesPath, 'utf8');
+    dependenciesDataCache = JSON.parse(content);
+    console.log('Loaded pre-fetched dependencies data from dependencies.json');
+    return dependenciesDataCache;
+  } catch (error) {
+    console.log('No pre-fetched dependencies.json found, dependency detection may be limited');
+    return null;
+  }
+}
+
+// Function to get operator dependencies from pre-fetched dependencies.json
+async function getOperatorDependencies(catalogType, catalogVersion, operatorName) {
+  try {
+    let dependencies = [];
+    let dependencyPackageName = null;
+    
+    // Load pre-fetched dependencies data
+    const dependenciesData = await loadDependenciesData();
+    
+    if (dependenciesData) {
+      const catalogKey = `${catalogType}:${catalogVersion}`;
+      const catalogDeps = dependenciesData[catalogKey];
+      
+      if (catalogDeps) {
+        // First, check if operator itself has dependencies
+        if (catalogDeps[operatorName]) {
+          dependencies = [...catalogDeps[operatorName]];
+        }
+        
+        // For some operators (like ODF), dependencies are in a separate package
+        // Check for common dependency package naming patterns
+        const dependencyPackageNames = [];
+        
+        // If operator name ends with -operator, try base name + -dependencies
+        if (operatorName.endsWith('-operator')) {
+          const baseName = operatorName.replace(/-operator$/, '');
+          dependencyPackageNames.push(`${baseName}-dependencies`);
+        }
+        
+        // Add standard patterns
+        dependencyPackageNames.push(
+          `${operatorName}-dependencies`,
+          `${operatorName}-dependency`,
+          `${operatorName}-deps`
+        );
+        
+        // Check each dependency package pattern
+        for (const depPackageName of dependencyPackageNames) {
+          if (catalogDeps[depPackageName]) {
+            const depDependencies = catalogDeps[depPackageName];
+            dependencies = dependencies.concat(depDependencies);
+            dependencyPackageName = depPackageName;
+            console.log(`Found ${depDependencies.length} dependencies in ${depPackageName} for ${operatorName}`);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Include the dependency package itself if it exists (e.g., odf-dependencies)
+    if (dependencyPackageName) {
+      const catalogData = await loadPreFetchedCatalogData();
+      if (catalogData) {
+        const key = `${catalogType}:${catalogVersion}`;
+        const operators = catalogData.operators[key];
+        
+        if (operators) {
+          const depPackageInfo = operators.find(op => op.name === dependencyPackageName);
+          if (depPackageInfo) {
+            // Check if it's not already in dependencies
+            const alreadyExists = dependencies.some(dep => dep.packageName === dependencyPackageName);
+            if (!alreadyExists) {
+              dependencies.push({
+                packageName: dependencyPackageName,
+                versionRange: null,
+                displayName: depPackageInfo.name,
+                catalog: depPackageInfo.catalog,
+                catalogUrl: depPackageInfo.catalogUrl,
+                defaultChannel: depPackageInfo.defaultChannel,
+                isDependencyPackage: true
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Remove duplicates
+    const uniqueDependencies = dependencies.filter((dep, index, self) =>
+      index === self.findIndex(d => d.packageName === dep.packageName)
+    );
+    
+    // Enrich with operator metadata if available
+    const catalogData = await loadPreFetchedCatalogData();
+    if (catalogData) {
+      const key = `${catalogType}:${catalogVersion}`;
+      const operators = catalogData.operators[key];
+      
+      if (operators) {
+        uniqueDependencies.forEach(dep => {
+          const operatorInfo = operators.find(op => op.name === dep.packageName);
+          if (operatorInfo) {
+            dep.displayName = dep.displayName || operatorInfo.name;
+            dep.catalog = dep.catalog || operatorInfo.catalog;
+            dep.catalogUrl = dep.catalogUrl || operatorInfo.catalogUrl;
+            dep.defaultChannel = dep.defaultChannel || operatorInfo.defaultChannel;
+          }
+        });
+      }
+    }
+    
+    return uniqueDependencies;
+  } catch (error) {
+    console.error(`Error getting dependencies for ${operatorName} in ${catalogType}:${catalogVersion}:`, error.message);
+    return [];
+  }
+}
+
 
 // Cache for dynamic data
 const operatorCache = {
@@ -1357,6 +1490,64 @@ app.get('/api/operators/channels', async (req, res) => {
   } catch (error) {
     console.error(`Error fetching channels:`, error);
     res.status(500).json({ error: 'Failed to get operator channels' });
+  }
+});
+
+// Endpoint to get operator dependencies
+app.get('/api/operators/:operator/dependencies', async (req, res) => {
+  try {
+    const { operator } = req.params;
+    const { catalogUrl } = req.query;
+    
+    let dependencies = [];
+    let catalogType = null;
+    let catalogVersion = null;
+    
+    if (catalogUrl) {
+      // Extract catalog type and version from URL
+      catalogType = getCatalogNameFromUrl(catalogUrl);
+      catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.19';
+      
+      dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
+    } else {
+      // Search across all available catalogs
+      const catalogData = await loadPreFetchedCatalogData();
+      if (catalogData && catalogData.index && catalogData.index.catalogs) {
+        for (const catalog of catalogData.index.catalogs) {
+          const deps = await getOperatorDependencies(
+            catalog.catalog_type,
+            catalog.ocp_version,
+            operator
+          );
+          
+          if (deps.length > 0) {
+            dependencies = deps;
+            catalogType = catalog.catalog_type;
+            catalogVersion = catalog.ocp_version;
+            break; // Found dependencies, no need to search further
+          }
+        }
+      }
+    }
+    
+    if (dependencies.length === 0) {
+      return res.json({ 
+        operator,
+        dependencies: [],
+        message: 'No dependencies found for this operator'
+      });
+    }
+    
+    res.json({
+      operator,
+      catalogType,
+      catalogVersion,
+      dependencies,
+      count: dependencies.length
+    });
+  } catch (error) {
+    console.error(`Error getting dependencies for ${req.params.operator}:`, error);
+    res.status(500).json({ error: 'Failed to get operator dependencies' });
   }
 });
 

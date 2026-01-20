@@ -355,6 +355,55 @@ process_catalog_data() {
 EOF
 }
 
+# Function to extract operator dependencies from catalog.json files
+extract_operator_dependencies() {
+    local catalog_type=$1
+    local ocp_version=$2
+    local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
+    local dependencies_file="${catalog_dir}/dependencies.json"
+    
+    if [ ! -d "${catalog_dir}/configs" ]; then
+        print_warning "No configs directory found for ${catalog_type} v${ocp_version} - skipping dependency extraction"
+        return
+    fi
+    
+    print_status "Extracting operator dependencies for ${catalog_type} v${ocp_version}..."
+    
+    # Initialize dependencies object
+    echo '{}' > "$dependencies_file"
+    
+    # Process each operator directory
+    for operator_dir in "${catalog_dir}/configs"/*; do
+        if [ -d "$operator_dir" ]; then
+            local operator_name=$(basename "$operator_dir")
+            local catalog_json="${operator_dir}/catalog.json"
+            local deps_array="[]"
+            
+            # Extract dependencies from catalog.json if it exists
+            if [ -f "$catalog_json" ]; then
+                # Parse catalog.json - extract olm.package.required from olm.bundle entries
+                # The file contains multiple JSON objects separated by newlines
+                deps_array=$(jq -cs '
+                    [.[] | select(.schema == "olm.bundle") | .properties // [] | .[] | 
+                     select(.type == "olm.package.required") | .value | 
+                     {packageName: .packageName, versionRange: .versionRange}] | 
+                    unique_by(.packageName)
+                ' "$catalog_json" 2>/dev/null || echo "[]")
+            fi
+            
+            # Only add if there are dependencies
+            if [ "$deps_array" != "[]" ] && [ -n "$deps_array" ]; then
+                jq --arg op "$operator_name" --argjson deps "$deps_array" \
+                   '. + {($op): $deps}' "$dependencies_file" > "${dependencies_file}.tmp" && \
+                mv "${dependencies_file}.tmp" "$dependencies_file"
+            fi
+        fi
+    done
+    
+    local dep_count=$(jq 'keys | length' "$dependencies_file" 2>/dev/null || echo "0")
+    print_success "Extracted dependencies for $dep_count operators in ${catalog_type} v${ocp_version}"
+}
+
 # Main execution
 main() {
     print_status "Starting catalog fetch process..."
@@ -420,6 +469,7 @@ main() {
         # Extract and process
         if extract_catalog_data "$catalog_type" "$ocp_version"; then
             process_catalog_data "$catalog_type" "$ocp_version"
+            extract_operator_dependencies "$catalog_type" "$ocp_version"
             echo "SUCCESS:${catalog_type}:${ocp_version}" >> "$results_file"
             return 0
         else
@@ -427,7 +477,7 @@ main() {
             return 1
         fi
     }
-    export -f process_catalog_job
+    export -f process_catalog_job extract_operator_dependencies
     
     # Process catalogs with controlled parallelism
     for catalog_job in "${CATALOG_JOBS[@]}"; do
@@ -511,6 +561,28 @@ EOF
             fi
         done
     done
+    
+    # Create master dependencies.json by merging all per-catalog dependency files
+    print_status "Creating master dependencies index..."
+    echo '{}' > "${CATALOG_DATA_DIR}/dependencies.json"
+    
+    for ocp_version in "${OCP_VERSIONS[@]}"; do
+        for catalog_type in "${CATALOG_TYPES[@]}"; do
+            local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
+            local deps_file="${catalog_dir}/dependencies.json"
+            local catalog_key="${catalog_type}:v${ocp_version}"
+            
+            if [ -f "$deps_file" ]; then
+                local deps_content=$(cat "$deps_file")
+                jq --arg key "$catalog_key" --argjson deps "$deps_content" \
+                   '. + {($key): $deps}' "${CATALOG_DATA_DIR}/dependencies.json" > "${CATALOG_DATA_DIR}/dependencies.json.tmp" && \
+                mv "${CATALOG_DATA_DIR}/dependencies.json.tmp" "${CATALOG_DATA_DIR}/dependencies.json"
+            fi
+        done
+    done
+    
+    local total_deps=$(jq '[.[] | keys | length] | add // 0' "${CATALOG_DATA_DIR}/dependencies.json" 2>/dev/null || echo "0")
+    print_success "Created master dependencies.json with dependencies for $total_deps operators"
     
     # Calculate final statistics
     local processed_catalogs=$((SUCCESSFUL_CATALOGS + FAILED_CATALOGS + SKIPPED_CATALOGS))
