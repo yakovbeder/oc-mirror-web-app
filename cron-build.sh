@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs/cron"
 LOG_FILE="${LOG_DIR}/build-$(date +%Y%m%d-%H%M%S).log"
-VERSION="${BUILD_VERSION:-3.3}"
+VERSION="${BUILD_VERSION:-3.4}"
 
 # Create log directory if it doesn't exist
 mkdir -p "${LOG_DIR}"
