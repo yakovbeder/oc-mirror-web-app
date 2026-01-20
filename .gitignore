@@ -41,14 +41,7 @@ pids/
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
-coverage/
-
-# nyc test coverage
-.nyc_output
-
 # Dependency directories
-jspm_packages/
 
 # Optional npm cache directory
 .npm
@@ -61,9 +54,6 @@ jspm_packages/
 
 # Yarn Integrity file
 .yarn-integrity
-
-# dotenv environment variables file
-.env
 
 # Runtime configuration files
 .user_storage_path
@@ -100,6 +90,3 @@ temp/
 # Pre-fetched operator catalog data (large files, generated during build)
 catalog-data/*
 !catalog-data/.gitkeep
-
-# Build and deployment scripts
-# build-for-quay.sh (moved to build-for-quay/ directory) 
