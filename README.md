@@ -2,7 +2,7 @@
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. This application provides a user-friendly way to create, manage, and execute mirror configurations without requiring command-line expertise.
 
-**Current Version: v3.3**
+**Current Version: v3.4**
 
 ## 📋 Table of Contents
 
@@ -220,6 +220,7 @@ chmod +x quay-run.sh
 
 ### 🎯 Core Functionality
 - **Configuration Management**: Create, edit, and manage mirror configurations
+- **Operator Dependency Auto-Detection**: Automatically detect and display operator dependencies with one-click add
 - **Archive Size Control**: Optional `archiveSize` parameter to limit archive file sizes when mirroring to disk
 - **YAML Upload & Import**: Upload existing ImageSetConfiguration YAML files with validation and conflict resolution
 - **Configuration Deletion**: Delete unwanted configuration files with confirmation dialogs
@@ -457,6 +458,7 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 - `GET /api/catalogs` - Get available operator catalogs
 - `GET /api/operators` - Get available operators (dynamic discovery)
 - `GET /api/operator-channels/:operator` - Get channels for specific operator (dynamic)
+- `GET /api/operator-dependencies` - Get dependencies for selected operators (auto-detection)
 
 [⬆️ Back to Top](#-table-of-contents)
 

@@ -1,6 +1,6 @@
 # OC Mirror v2 Web Application - API Documentation
 
-**Current Version: v3.3**
+**Current Version: v3.4**
 
 ## Overview
 
@@ -389,6 +389,41 @@ Get available channels for a specific operator.
   ]
 }
 ```
+
+#### GET /api/operator-dependencies
+Get dependencies for selected operators.
+
+**Query Parameters:**
+- `operators` (required): JSON array of operator objects with name and catalog
+
+**Example Request:**
+```bash
+curl "http://localhost:3001/api/operator-dependencies?operators=%5B%7B%22name%22%3A%22odf-operator%22%2C%22catalog%22%3A%22registry.redhat.io%2Fredhat%2Fredhat-operator-index%3Av4.18%22%7D%5D"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "dependencies": [
+      {
+        "packageName": "mcg-operator",
+        "versionRange": ">=4.9.0 <=4.17.0",
+        "requiredBy": "odf-operator",
+        "catalog": "registry.redhat.io/redhat/redhat-operator-index:v4.18"
+      }
+    ],
+    "operatorsChecked": ["odf-operator"],
+    "catalogsSearched": ["redhat-operator-index:v4.18"]
+  }
+}
+```
+
+**Notes:**
+- Dependencies are pre-computed during catalog fetch for faster runtime lookups
+- Returns dependencies that are not already in the selected operators list
+- Each dependency includes the operator that requires it and suggested catalog
 
 ### Operations Management
 

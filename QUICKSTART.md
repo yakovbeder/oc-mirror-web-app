@@ -1,6 +1,6 @@
 # Quick Start Guide - OC Mirror v2 Web Application
 
-**Current Version: v3.3**
+**Current Version: v3.4**
 
 ## 🚀 Containerized Deployment (Recommended)
 
@@ -103,7 +103,7 @@ The containerized version includes:
 - ✅ **Auto-correction features** (automatically fixes invalid configurations)
 - ✅ **Enhanced performance** (compression, error handling, logging)
 - ✅ **Multi-format catalog processing** (supports all operator catalog formats)
-- ✅ **Version 3.3 features** (archiveSize option, improved tooltips, YAML upload, configuration deletion, enhanced UI/UX, improved error handling, smart validation, OCP 4.20 support, optimized catalog fetching, persistent mirror storage, Docker HEALTHCHECK, graceful shutdown)
+- ✅ **Version 3.4 features** (operator dependency auto-detection, one-click dependency add, pre-generated dependency data, archiveSize option, improved tooltips, YAML upload, configuration deletion, enhanced UI/UX, improved error handling, smart validation, OCP 4.20 support, optimized catalog fetching, persistent mirror storage, Docker HEALTHCHECK, graceful shutdown)
 
 ## 🎯 Smart Validation Features
 

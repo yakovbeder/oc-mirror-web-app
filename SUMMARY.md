@@ -69,6 +69,9 @@ oc-mirror-web-app/
 - **Platform Channels**: Configure OpenShift Container Platform channels to mirror
 - **Dynamic Operator Discovery**: Real-time query of operator catalogs using `oc-mirror`
 - **Smart Operator Selection**: Dropdown lists with dynamic operator packages and channels
+- **Operator Dependency Auto-Detection**: Automatically detect and display operator dependencies
+- **One-Click Dependency Add**: Add detected dependencies to configuration with a single click
+- **Pre-generated Dependency Data**: Dependencies pre-computed during catalog fetch for faster runtime
 - **Real-time Updates**: New operators and channels appear automatically without code changes
 - **Pre-fetched Catalogs**: Operator catalogs pre-fetched during build
 - **Multi-Format Support**: Handles catalog.json, index.json, index.yaml, package.json, and YAML formats
@@ -128,7 +131,7 @@ The application provides a comprehensive RESTful API with the following endpoint
 
 - **Dashboard**: `/api/stats`, `/api/operations/recent`, `/api/system/info`
 - **Configuration**: `/api/config/list`, `/api/config/save`, `/api/channels`, `/api/operators`
-- **Dynamic Discovery**: `/api/catalogs`, `/api/operator-channels/:operator`
+- **Dynamic Discovery**: `/api/catalogs`, `/api/operator-channels/:operator`, `/api/operator-dependencies`
 - **Operations**: `/api/operations`, `/api/operations/start`, `/api/operations/:id/*` (CRUD operations)
 - **Settings**: `/api/settings`, `/api/system/info`
 
