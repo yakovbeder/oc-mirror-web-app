@@ -280,16 +280,19 @@ oc-mirror-web-app/
 │   ├── logs/             # Application logs
 │   ├── cache/            # oc-mirror v2 cache
 │   └── mirrors/          # Persistent mirror archives (survives restarts)
+├── logs/                  # Cron build logs
+│   └── cron/             # Daily build logs
 ├── examples/              # Configuration examples
 ├── docs/                  # Documentation and screenshots
 ├── public/                # Static assets
 ├── pull-secret/           # Pull secret storage
-├── .github/               # GitHub workflows and templates
-├── Dockerfile            # Container definition
-├── container-run.sh      # Easy container runner (Podman)
-├── quay-run.sh           # Quay.io image runner
 ├── build-for-quay/       # Build and deployment scripts
 │   └── build-for-quay.sh # Quay.io build and push script
+├── Dockerfile            # Container definition
+├── entrypoint.sh         # Container entrypoint script
+├── container-run.sh      # Easy container runner (Podman)
+├── quay-run.sh           # Quay.io image runner
+├── cron-build.sh         # Daily catalog fetch and Quay.io build
 ├── fetch-catalogs-host.sh # Catalog fetching script
 ├── package.json          # Node.js dependencies
 ├── API.md                # API documentation
