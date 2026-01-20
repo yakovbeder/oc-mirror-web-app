@@ -519,6 +519,172 @@ async function getActualChannelsFromCatalog(catalogType, catalogVersion, operato
   }
 }
 
+// Function to parse catalog.json and extract dependencies from olm.bundle entries
+async function parseCatalogDependencies(catalogPath) {
+  try {
+    const fs = require('fs').promises;
+    const catalogContent = await fs.readFile(catalogPath, 'utf8');
+    const dependencies = [];
+    
+    // Parse multiple concatenated JSON objects
+    const jsonObjects = catalogContent.split('}{');
+    
+    for (let i = 0; i < jsonObjects.length; i++) {
+      let jsonStr = jsonObjects[i];
+      
+      // Add back the braces that were removed by the split
+      if (i === 0) {
+        jsonStr += '}';
+      } else if (i === jsonObjects.length - 1) {
+        jsonStr = '{' + jsonStr;
+      } else {
+        jsonStr = '{' + jsonStr + '}';
+      }
+      
+      try {
+        const obj = JSON.parse(jsonStr);
+        
+        // Look for olm.bundle entries with dependencies
+        if (obj.schema === 'olm.bundle' && obj.properties && Array.isArray(obj.properties)) {
+          // Extract olm.package.required properties
+          obj.properties.forEach(prop => {
+            if (prop.type === 'olm.package.required' && prop.value) {
+              dependencies.push({
+                packageName: prop.value.packageName,
+                versionRange: prop.value.versionRange || null
+              });
+            }
+          });
+        }
+      } catch (parseError) {
+        // Skip invalid JSON objects
+        continue;
+      }
+    }
+    
+    // Remove duplicates based on packageName
+    const uniqueDependencies = dependencies.filter((dep, index, self) =>
+      index === self.findIndex(d => d.packageName === dep.packageName)
+    );
+    
+    return uniqueDependencies;
+  } catch (error) {
+    console.error(`Error parsing catalog dependencies from ${catalogPath}:`, error.message);
+    return [];
+  }
+}
+
+// Function to get operator dependencies
+async function getOperatorDependencies(catalogType, catalogVersion, operatorName) {
+  try {
+    const path = require('path');
+    const fs = require('fs').promises;
+    
+    // First, try to find dependencies in the operator's own catalog.json
+    const operatorCatalogPath = path.join(__dirname, `../catalog-data/${catalogType}/${catalogVersion}/configs/${operatorName}/catalog.json`);
+    
+    let dependencies = [];
+    let dependencyPackageName = null;
+    
+    try {
+      await fs.access(operatorCatalogPath);
+      dependencies = await parseCatalogDependencies(operatorCatalogPath);
+    } catch (error) {
+      // Operator catalog file doesn't exist, continue to check for dependencies package
+    }
+    
+    // For some operators (like ODF), dependencies are in a separate package
+    // Check for common dependency package naming patterns
+    const dependencyPackageNames = [];
+    
+    // If operator name ends with -operator, try base name + -dependencies
+    if (operatorName.endsWith('-operator')) {
+      const baseName = operatorName.replace(/-operator$/, '');
+      dependencyPackageNames.push(`${baseName}-dependencies`);
+    }
+    
+    // Add standard patterns
+    dependencyPackageNames.push(
+      `${operatorName}-dependencies`,
+      `${operatorName}-dependency`,
+      `${operatorName}-deps`
+    );
+    
+    // Check each dependency package pattern
+    for (const depPackageName of dependencyPackageNames) {
+      const depCatalogPath = path.join(__dirname, `../catalog-data/${catalogType}/${catalogVersion}/configs/${depPackageName}/catalog.json`);
+      
+      try {
+        await fs.access(depCatalogPath);
+        const depDependencies = await parseCatalogDependencies(depCatalogPath);
+        dependencies = dependencies.concat(depDependencies);
+        dependencyPackageName = depPackageName; // Track which dependency package was found
+        console.log(`Found ${depDependencies.length} dependencies in ${depPackageName} for ${operatorName}`);
+        break; // Found dependencies package, no need to check others
+      } catch (error) {
+        // Dependency package doesn't exist, continue
+      }
+    }
+    
+    // Include the dependency package itself if it exists (e.g., odf-dependencies)
+    if (dependencyPackageName) {
+      const catalogData = await loadPreFetchedCatalogData();
+      if (catalogData) {
+        const key = `${catalogType}:${catalogVersion}`;
+        const operators = catalogData.operators[key];
+        
+        if (operators) {
+          const depPackageInfo = operators.find(op => op.name === dependencyPackageName);
+          if (depPackageInfo) {
+            // Check if it's not already in dependencies
+            const alreadyExists = dependencies.some(dep => dep.packageName === dependencyPackageName);
+            if (!alreadyExists) {
+              dependencies.push({
+                packageName: dependencyPackageName,
+                versionRange: null,
+                displayName: depPackageInfo.name,
+                catalog: depPackageInfo.catalog,
+                catalogUrl: depPackageInfo.catalogUrl,
+                defaultChannel: depPackageInfo.defaultChannel,
+                isDependencyPackage: true
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Remove duplicates again after combining
+    const uniqueDependencies = dependencies.filter((dep, index, self) =>
+      index === self.findIndex(d => d.packageName === dep.packageName)
+    );
+    
+    // Enrich with operator metadata if available
+    const catalogData = await loadPreFetchedCatalogData();
+    if (catalogData) {
+      const key = `${catalogType}:${catalogVersion}`;
+      const operators = catalogData.operators[key];
+      
+      if (operators) {
+        uniqueDependencies.forEach(dep => {
+          const operatorInfo = operators.find(op => op.name === dep.packageName);
+          if (operatorInfo) {
+            dep.displayName = dep.displayName || operatorInfo.name;
+            dep.catalog = dep.catalog || operatorInfo.catalog;
+            dep.catalogUrl = dep.catalogUrl || operatorInfo.catalogUrl;
+            dep.defaultChannel = dep.defaultChannel || operatorInfo.defaultChannel;
+          }
+        });
+      }
+    }
+    
+    return uniqueDependencies;
+  } catch (error) {
+    console.error(`Error getting dependencies for ${operatorName} in ${catalogType}:${catalogVersion}:`, error.message);
+    return [];
+  }
+}
+
 
 // Cache for dynamic data
 const operatorCache = {
@@ -1357,6 +1523,64 @@ app.get('/api/operators/channels', async (req, res) => {
   } catch (error) {
     console.error(`Error fetching channels:`, error);
     res.status(500).json({ error: 'Failed to get operator channels' });
+  }
+});
+
+// Endpoint to get operator dependencies
+app.get('/api/operators/:operator/dependencies', async (req, res) => {
+  try {
+    const { operator } = req.params;
+    const { catalogUrl } = req.query;
+    
+    let dependencies = [];
+    let catalogType = null;
+    let catalogVersion = null;
+    
+    if (catalogUrl) {
+      // Extract catalog type and version from URL
+      catalogType = getCatalogNameFromUrl(catalogUrl);
+      catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.19';
+      
+      dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
+    } else {
+      // Search across all available catalogs
+      const catalogData = await loadPreFetchedCatalogData();
+      if (catalogData && catalogData.index && catalogData.index.catalogs) {
+        for (const catalog of catalogData.index.catalogs) {
+          const deps = await getOperatorDependencies(
+            catalog.catalog_type,
+            catalog.ocp_version,
+            operator
+          );
+          
+          if (deps.length > 0) {
+            dependencies = deps;
+            catalogType = catalog.catalog_type;
+            catalogVersion = catalog.ocp_version;
+            break; // Found dependencies, no need to search further
+          }
+        }
+      }
+    }
+    
+    if (dependencies.length === 0) {
+      return res.json({ 
+        operator,
+        dependencies: [],
+        message: 'No dependencies found for this operator'
+      });
+    }
+    
+    res.json({
+      operator,
+      catalogType,
+      catalogVersion,
+      dependencies,
+      count: dependencies.length
+    });
+  } catch (error) {
+    console.error(`Error getting dependencies for ${req.params.operator}:`, error);
+    res.status(500).json({ error: 'Failed to get operator dependencies' });
   }
 });
 

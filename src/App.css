@@ -300,6 +300,20 @@ body {
   display: inline-block;
 }
 
+/* Auto-added dependency badge */
+.badge-auto-added {
+  display: inline-block;
+  background: #e3f2fd;
+  color: #1976d2;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid #90caf9;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .status-running-text {
   color: var(--blue);
   font-weight: 600;
