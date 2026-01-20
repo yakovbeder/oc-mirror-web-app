@@ -15,8 +15,8 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
   - [Container Management](#container-management)
   - [Operator Catalog Fetching](#operator-catalog-fetching)
 
-### 🔧 Alternative Deployment Options
-- [Quay.io Images (quay-run.sh)](#alternative-quayio-images-quay-runsh)
+### 🐳 Pre-built Images (Quay.io)
+- [Quay.io Images (quay-run.sh)](#quayio-images-quay-runsh)
 
 ### 📋 Features & Capabilities
 - [Features](#-features)
@@ -182,7 +182,7 @@ The application now pre-fetches operator catalogs for all supported OCP versions
 - **Automatic cleanup**: Container images cleaned up after extraction to save disk space
 - **Incremental updates**: Skips fetching if catalogs are already fresh (7-day freshness check)
 
-### Alternative: Quay.io Images (quay-run.sh)
+### Quay.io Images (quay-run.sh)
 
 For production deployments using pre-built images from Quay.io:
 
