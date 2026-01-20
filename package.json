@@ -1,7 +1,20 @@
 {
   "name": "oc-mirror-web-app",
-  "version": "3.2",
+  "version": "3.4",
   "description": "Web application for OpenShift Container Platform mirroring operations using oc-mirror v2",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yakovbeder/oc-mirror-web-app.git"
+  },
+  "author": "Yakov Beder",
+  "keywords": [
+    "openshift",
+    "oc-mirror",
+    "mirroring",
+    "operators",
+    "disconnected"
+  ],
   "main": "index.js",
   "scripts": {
     "start": "react-scripts start",

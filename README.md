@@ -474,7 +474,7 @@ The application provides a comprehensive RESTful API at `http://localhost:3001/a
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is open source software licensed under the [Apache License 2.0](LICENSE).
 
 [⬆️ Back to Top](#-table-of-contents)
 
