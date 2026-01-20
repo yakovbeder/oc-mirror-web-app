@@ -519,114 +519,77 @@ async function getActualChannelsFromCatalog(catalogType, catalogVersion, operato
   }
 }
 
-// Function to parse catalog.json and extract dependencies from olm.bundle entries
-async function parseCatalogDependencies(catalogPath) {
-  try {
-    const fs = require('fs').promises;
-    const catalogContent = await fs.readFile(catalogPath, 'utf8');
-    const dependencies = [];
-    
-    // Parse multiple concatenated JSON objects - handle both `}{` and `}\n{` separators
-    // First normalize the content by removing newlines between JSON objects
-    const normalizedContent = catalogContent.replace(/\}\s*\n\s*\{/g, '}\n{');
-    
-    // Split by newline-separated JSON objects
-    const jsonObjects = normalizedContent.split(/\}\s*\{/);
-    
-    for (let i = 0; i < jsonObjects.length; i++) {
-      let jsonStr = jsonObjects[i].trim();
-      
-      // Add back the braces that were removed by the split
-      if (i === 0) {
-        jsonStr += '}';
-      } else if (i === jsonObjects.length - 1) {
-        jsonStr = '{' + jsonStr;
-      } else {
-        jsonStr = '{' + jsonStr + '}';
-      }
-      
-      try {
-        const obj = JSON.parse(jsonStr);
-        
-        // Look for olm.bundle entries with dependencies
-        if (obj.schema === 'olm.bundle' && obj.properties && Array.isArray(obj.properties)) {
-          // Extract olm.package.required properties
-          obj.properties.forEach(prop => {
-            if (prop.type === 'olm.package.required' && prop.value) {
-              dependencies.push({
-                packageName: prop.value.packageName,
-                versionRange: prop.value.versionRange || null
-              });
-            }
-          });
-        }
-      } catch (parseError) {
-        // Skip invalid JSON objects
-        continue;
-      }
-    }
-    
-    // Remove duplicates based on packageName
-    const uniqueDependencies = dependencies.filter((dep, index, self) =>
-      index === self.findIndex(d => d.packageName === dep.packageName)
-    );
-    
-    return uniqueDependencies;
-  } catch (error) {
-    console.error(`Error parsing catalog dependencies from ${catalogPath}:`, error.message);
-    return [];
-  }
-}
+// Cache for pre-fetched dependencies data
+let dependenciesDataCache = null;
 
-// Function to get operator dependencies
-async function getOperatorDependencies(catalogType, catalogVersion, operatorName) {
+// Function to load pre-fetched dependencies data from dependencies.json
+async function loadDependenciesData() {
+  if (dependenciesDataCache) {
+    return dependenciesDataCache;
+  }
+  
   try {
     const path = require('path');
     const fs = require('fs').promises;
     
-    // First, try to find dependencies in the operator's own catalog.json
-    const operatorCatalogPath = path.join(__dirname, `../catalog-data/${catalogType}/${catalogVersion}/configs/${operatorName}/catalog.json`);
-    
+    // Try to load the master dependencies.json file
+    const dependenciesPath = path.join(__dirname, '../catalog-data/dependencies.json');
+    const content = await fs.readFile(dependenciesPath, 'utf8');
+    dependenciesDataCache = JSON.parse(content);
+    console.log('Loaded pre-fetched dependencies data from dependencies.json');
+    return dependenciesDataCache;
+  } catch (error) {
+    console.log('No pre-fetched dependencies.json found, dependency detection may be limited');
+    return null;
+  }
+}
+
+// Function to get operator dependencies from pre-fetched dependencies.json
+async function getOperatorDependencies(catalogType, catalogVersion, operatorName) {
+  try {
     let dependencies = [];
     let dependencyPackageName = null;
     
-    try {
-      await fs.access(operatorCatalogPath);
-      dependencies = await parseCatalogDependencies(operatorCatalogPath);
-    } catch (error) {
-      // Operator catalog file doesn't exist, continue to check for dependencies package
-    }
+    // Load pre-fetched dependencies data
+    const dependenciesData = await loadDependenciesData();
     
-    // For some operators (like ODF), dependencies are in a separate package
-    // Check for common dependency package naming patterns
-    const dependencyPackageNames = [];
-    
-    // If operator name ends with -operator, try base name + -dependencies
-    if (operatorName.endsWith('-operator')) {
-      const baseName = operatorName.replace(/-operator$/, '');
-      dependencyPackageNames.push(`${baseName}-dependencies`);
-    }
-    
-    // Add standard patterns
-    dependencyPackageNames.push(
-      `${operatorName}-dependencies`,
-      `${operatorName}-dependency`,
-      `${operatorName}-deps`
-    );
-    
-    // Check each dependency package pattern
-    for (const depPackageName of dependencyPackageNames) {
-      const depCatalogPath = path.join(__dirname, `../catalog-data/${catalogType}/${catalogVersion}/configs/${depPackageName}/catalog.json`);
+    if (dependenciesData) {
+      const catalogKey = `${catalogType}:${catalogVersion}`;
+      const catalogDeps = dependenciesData[catalogKey];
       
-      try {
-        await fs.access(depCatalogPath);
-        const depDependencies = await parseCatalogDependencies(depCatalogPath);
-        dependencies = dependencies.concat(depDependencies);
-        dependencyPackageName = depPackageName; // Track which dependency package was found
-        console.log(`Found ${depDependencies.length} dependencies in ${depPackageName} for ${operatorName}`);
-        break; // Found dependencies package, no need to check others
-      } catch (error) {
-        // Dependency package doesn't exist, continue
+      if (catalogDeps) {
+        // First, check if operator itself has dependencies
+        if (catalogDeps[operatorName]) {
+          dependencies = [...catalogDeps[operatorName]];
+        }
+        
+        // For some operators (like ODF), dependencies are in a separate package
+        // Check for common dependency package naming patterns
+        const dependencyPackageNames = [];
+        
+        // If operator name ends with -operator, try base name + -dependencies
+        if (operatorName.endsWith('-operator')) {
+          const baseName = operatorName.replace(/-operator$/, '');
+          dependencyPackageNames.push(`${baseName}-dependencies`);
+        }
+        
+        // Add standard patterns
+        dependencyPackageNames.push(
+          `${operatorName}-dependencies`,
+          `${operatorName}-dependency`,
+          `${operatorName}-deps`
+        );
+        
+        // Check each dependency package pattern
+        for (const depPackageName of dependencyPackageNames) {
+          if (catalogDeps[depPackageName]) {
+            const depDependencies = catalogDeps[depPackageName];
+            dependencies = dependencies.concat(depDependencies);
+            dependencyPackageName = depPackageName;
+            console.log(`Found ${depDependencies.length} dependencies in ${depPackageName} for ${operatorName}`);
+            break;
+          }
+        }
       }
     }
     
@@ -658,7 +621,7 @@ async function getOperatorDependencies(catalogType, catalogVersion, operatorName
       }
     }
     
-    // Remove duplicates again after combining
+    // Remove duplicates
     const uniqueDependencies = dependencies.filter((dep, index, self) =>
       index === self.findIndex(d => d.packageName === dep.packageName)
     );

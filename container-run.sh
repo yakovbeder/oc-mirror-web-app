@@ -6,6 +6,10 @@
 
 set -e
 
+# Optional behavior flags (can be set via env vars or script args)
+# - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
+BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -206,6 +210,11 @@ build_image() {
         build_cmd="$build_cmd --format docker"
     fi
     
+    if [ "$BUILD_NO_CACHE" = "true" ]; then
+        print_status "Build cache disabled (BUILD_NO_CACHE=true)"
+        build_cmd="$build_cmd --no-cache"
+    fi
+    
     if $build_cmd -t oc-mirror-web-app .; then
         print_success "Container image built successfully"
     else
@@ -316,9 +325,11 @@ case "${1:-}" in
         echo "  --status       Show container status"
         echo "  --engine       Show detected container engine"
         echo "  --fetch-catalogs Fetch operator catalogs during build (slower but complete)"
+        echo "  --no-cache     Rebuild the container image without using cache"
         echo ""
         echo "Environment Variables:"
         echo "  FETCH_CATALOGS=true  Fetch operator catalogs during build"
+        echo "  BUILD_NO_CACHE=true  Disable build cache when building the container image"
         echo ""
         echo "Examples:"
         echo "  $0              # Build and run the application (fast build)"
@@ -326,6 +337,7 @@ case "${1:-}" in
         echo "  $0 --stop       # Stop the application"
         echo "  $0 --logs       # View application logs"
         echo "  $0 --fetch-catalogs # Build with catalog fetching (complete data)"
+        echo "  $0 --no-cache   # Build and run without using cache"
         echo ""
         echo "Container Engine Support:"
         echo "  - Podman (required)"
@@ -374,6 +386,10 @@ case "${1:-}" in
         ;;
     --fetch-catalogs)
         export FETCH_CATALOGS=true
+        main
+        ;;
+    --no-cache)
+        export BUILD_NO_CACHE=true
         main
         ;;
     --engine)
