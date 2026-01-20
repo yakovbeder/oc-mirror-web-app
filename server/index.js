@@ -526,11 +526,15 @@ async function parseCatalogDependencies(catalogPath) {
     const catalogContent = await fs.readFile(catalogPath, 'utf8');
     const dependencies = [];
     
-    // Parse multiple concatenated JSON objects
-    const jsonObjects = catalogContent.split('}{');
+    // Parse multiple concatenated JSON objects - handle both `}{` and `}\n{` separators
+    // First normalize the content by removing newlines between JSON objects
+    const normalizedContent = catalogContent.replace(/\}\s*\n\s*\{/g, '}\n{');
+    
+    // Split by newline-separated JSON objects
+    const jsonObjects = normalizedContent.split(/\}\s*\{/);
     
     for (let i = 0; i < jsonObjects.length; i++) {
-      let jsonStr = jsonObjects[i];
+      let jsonStr = jsonObjects[i].trim();
       
       // Add back the braces that were removed by the split
       if (i === 0) {
