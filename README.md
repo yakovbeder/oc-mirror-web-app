@@ -7,16 +7,18 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 ## 📋 Table of Contents
 
 ### 🚀 Getting Started
-- [Quick Start (Containerized)](#-quick-start-containerized---no-host-dependencies)
+- [Quick Start](#-quick-start)
   - [Prerequisites](#prerequisites)
   - [Clone and Navigate](#1-clone-and-navigate)
-  - [Run with Container Script](#2-run-with-container-script-recommended)
+  - [Start the Application (Recommended)](#2-start-the-application-recommended)
   - [Access the Application](#3-access-the-application)
+  - [Application Management](#application-management)
+
+### 🔧 Build Locally and Run
+- [Build Locally and Run](#-build-locally-and-run)
+  - [Building the Container](#building-the-container)
   - [Container Management](#container-management)
   - [Operator Catalog Fetching](#operator-catalog-fetching)
-
-### 🐳 Pre-built Images (Quay.io)
-- [Quay.io Images (quay-run.sh)](#quayio-images-quay-runsh)
 
 ### 📋 Features & Capabilities
 - [Features](#-features)
@@ -64,16 +66,16 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 
 ---
 
-## 🚀 Quick Start (Containerized - No Host Dependencies)
+## 🚀 Quick Start
 
-The easiest way to run this application is using containers. This approach requires **no installation** of Node.js, oc, or oc-mirror on your host system.
+The easiest way to run this application is using pre-built container images from Quay.io. This approach requires **no building** and **no installation** of Node.js, oc, or oc-mirror on your host system.
 
 ### Prerequisites
 
 - **Podman** (required)
 - **OpenShift pull-secret.json** (required to connect to Red Hat registries)
 
-> **Note:** You must provide a valid `pull-secret.json` file (downloadable from https://console.redhat.com/openshift/downloads#tool-pull-secret) in order to mirror images from Red Hat registries.  This should be saved in the pull-secret directory.
+> **Note:** You must provide a valid `pull-secret.json` file (downloadable from https://console.redhat.com/openshift/downloads#tool-pull-secret) in order to mirror images from Red Hat registries. This should be saved in the pull-secret directory.
 
 ### 1. Clone and Navigate
 
@@ -81,7 +83,53 @@ The easiest way to run this application is using containers. This approach requi
 cd oc-mirror-web-app
 ```
 
-### 2. Run with Container Script (Recommended)
+### 2. Start the Application (Recommended)
+
+```bash
+# Make the script executable
+chmod +x start-app.sh
+
+# Start the application
+./start-app.sh
+```
+
+The script will:
+- ✅ Detect your system architecture (AMD64/ARM64)
+- ✅ Pull the appropriate pre-built image from Quay.io
+- ✅ Create necessary data directories
+- ✅ Start the containerized application
+- ✅ Display access information
+
+### 3. Access the Application
+
+Once running, access the web interface at:
+- **Web UI**: http://localhost:3000
+
+### Application Management
+
+```bash
+# View logs
+./start-app.sh --logs
+
+# Stop the application
+./start-app.sh --stop
+
+# Show status
+./start-app.sh --status
+
+# Restart the application
+./start-app.sh --restart
+```
+
+[⬆️ Back to Top](#-table-of-contents)
+
+---
+
+## 🔧 Build Locally and Run
+
+If you prefer to build the container image locally (for customization or development), use `container-run.sh`:
+
+### Building the Container
 
 > **🚨 IMPORTANT: First Run Requirement** 🚨
 > 
@@ -101,8 +149,6 @@ cd oc-mirror-web-app
 > - This ensures you have access to the complete list of operators and their channels
 > - Subsequent runs can use `./container-run.sh` (without the flag) for faster startup
 
-The script automatically detects whether you have Podman and uses it.
-
 The script will:
 - ✅ Detect your container runtime (Podman)
 - ✅ Check container runtime availability
@@ -110,12 +156,6 @@ The script will:
 - ✅ Build the container image (includes oc and oc-mirror v2)
 - ✅ Start the containerized application with optimized settings
 - ✅ Display access information
-
-### 3. Access the Application
-
-Once running, access the web interface at:
-- **Web UI**: http://localhost:3000
-- **API**: http://localhost:3001
 
 ### Container Management
 
@@ -142,7 +182,7 @@ Once running, access the web interface at:
 ./container-run.sh
 ```
 
-The container now includes:
+The container includes:
 - **Multi-architecture support** for AMD64 and ARM64
 - **Optimized environment variables** for better performance
 - **Enhanced logging** with configurable log levels
@@ -157,7 +197,7 @@ The container now includes:
 
 ### Operator Catalog Fetching
 
-The application now pre-fetches operator catalogs for all supported OCP versions (4.16-4.20) during the build process. This provides:
+The application pre-fetches operator catalogs for all supported OCP versions (4.16-4.20) during the build process. This provides:
 
 - **Faster operator selection** - No need to query catalogs at runtime
 - **Version-specific channels** - Each OCP version has its own operator catalog
@@ -181,30 +221,6 @@ The application now pre-fetches operator catalogs for all supported OCP versions
 - **Parallel processing**: Concurrent catalog fetching for faster build times
 - **Automatic cleanup**: Container images cleaned up after extraction to save disk space
 - **Incremental updates**: Skips fetching if catalogs are already fresh (7-day freshness check)
-
-### Quay.io Images (quay-run.sh)
-
-For production deployments using pre-built images from Quay.io:
-
-```bash
-# Make the script executable
-chmod +x quay-run.sh
-
-# Start the application from Quay.io
-./quay-run.sh
-
-# View logs
-./quay-run.sh --logs
-
-# Stop the application
-./quay-run.sh --stop
-
-# Show status
-./quay-run.sh --status
-
-# Restart the application
-./quay-run.sh --restart
-```
 
 
 
@@ -291,13 +307,11 @@ oc-mirror-web-app/
 ├── Dockerfile            # Container definition
 ├── entrypoint.sh         # Container entrypoint script
 ├── container-run.sh      # Easy container runner (Podman)
-├── quay-run.sh           # Quay.io image runner
+├── start-app.sh          # Application starter (pre-built images)
 ├── cron-build.sh         # Daily catalog fetch and Quay.io build
 ├── fetch-catalogs-host.sh # Catalog fetching script
 ├── package.json          # Node.js dependencies
 ├── API.md                # API documentation
-├── SUMMARY.md            # Feature summary
-├── QUICKSTART.md         # Quick start guide
 └── README.md             # This file
 ```
 
@@ -506,14 +520,14 @@ sudo chmod -R 777 data/
 
 ### Other Common Issues
 
-For additional troubleshooting steps, see the [Troubleshooting section in QUICKSTART.md](QUICKSTART.md#-troubleshooting).
+For additional troubleshooting steps, see the troubleshooting section above or review the application logs.
 
 [⬆️ Back to Top](#-table-of-contents)
 
 ## 🆘 Support
 
 For issues and questions:
-1. Check the troubleshooting section in QUICKSTART.md
+1. Check the troubleshooting section above
 2. Review the application logs
 3. Open an issue on GitHub
 
@@ -532,8 +546,8 @@ For issues and questions:
 - **OCP 4.20**: ✅ Supported
 
 ### Deployment Options
-- **Local Build**: `./container-run.sh` - Build and run locally
-- **Quay.io Images**: `./quay-run.sh` - Use pre-built images from Quay.io
+- **Pre-built Images (Recommended)**: `./start-app.sh` - Use pre-built images from Quay.io
+- **Build Locally**: `./container-run.sh` - Build and run locally
 
 ### Container Runtime Requirements
 - **Podman**: 4.0+ ✅ Required

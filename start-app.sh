@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Simplified runner script for oc-mirror-web-app using Quay.io images
+# Application starter script for oc-mirror-web-app using pre-built images from Quay.io
 # Automatically detects architecture and uses the appropriate image
 
 set -e
@@ -279,7 +279,7 @@ main() {
         start)
             echo "=========================================="
             echo "  OC Mirror v2 Web Application"
-            echo "  Quay.io Image Runner"
+            echo "  Application Starter"
             echo "=========================================="
             echo ""
             detect_architecture
@@ -308,7 +308,7 @@ main() {
         restart)
             echo "=========================================="
             echo "  OC Mirror v2 Web Application"
-            echo "  Quay.io Image Runner"
+            echo "  Application Starter"
             echo "=========================================="
             echo ""
             detect_architecture
