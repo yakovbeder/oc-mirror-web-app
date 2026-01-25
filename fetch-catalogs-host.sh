@@ -194,7 +194,33 @@ process_catalog_data() {
             local channels=""
             
             # Try different file formats
-            if [ -f "$catalog_json" ]; then
+            # PRIORITY: package.json + channels/ directory is checked FIRST as it's the most accurate
+            # for newer FBC (File-Based Catalog) format. catalog.json may contain bundled/outdated data.
+            if [ -f "$package_json" ] && [ -d "${operator_dir}/channels" ]; then
+                # Handle package.json + channels/ directory format (like volsync-product, odf-operator)
+                # This is the most accurate format for newer catalogs
+                operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
+                default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
+                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
+                    # Extract channel names from all JSON files in channels/ directory
+                    # Files can be named channel-*.json OR directly as the channel name (e.g., stable-4.20.json)
+                    local channel_names=""
+                    
+                    # Process all JSON files in the channels directory
+                    for channel_file in "${operator_dir}/channels"/*.json; do
+                        if [ -f "$channel_file" ]; then
+                            # Extract channel name from the 'name' field in the JSON file (most reliable)
+                            local channel_name=$(jq -r '.name // empty' "$channel_file" 2>/dev/null)
+                            if [ -n "$channel_name" ] && [ "$channel_name" != "null" ]; then
+                                channel_names="${channel_names} ${channel_name}"
+                            fi
+                        fi
+                    done
+                    
+                    # Remove duplicates and sort
+                    channels=$(echo "$channel_names" | tr ' ' '\n' | grep -v "^$" | sort -V | uniq | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
+                fi
+            elif [ -f "$catalog_json" ]; then
                 json_file="$catalog_json"
                 # Handle catalog.json with multiple JSON objects (using -cs for compact and slurp)
                 # Get operator name and default channel from olm.package object
@@ -278,31 +304,6 @@ process_catalog_data() {
                 default_channel=$(grep "defaultChannel:" "$yaml_file" | head -1 | sed 's/.*defaultChannel: //' 2>/dev/null)
                 # For YAML files, we'll set channels to empty for now (complex structure)
                 channels=""
-            elif [ -f "$package_json" ] && [ -d "${operator_dir}/channels" ]; then
-                # Handle package.json + channels/ directory format (like volsync-product)
-                operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
-                default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
-                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract channel names and bundle names from channel files in channels/ directory
-                    local channel_names=""
-                    local bundle_names=""
-                    
-                    # Get channel names from filenames
-                    channel_names=$(find "${operator_dir}/channels" -name "channel-*.json" -exec basename {} \; | sed 's/channel-\(.*\)\.json/\1/' | sort -u | tr '\n' ' ' | sed 's/ $//')
-                    
-                    # Get bundle names from entries in each channel file
-                    for channel_file in "${operator_dir}/channels"/channel-*.json; do
-                        if [ -f "$channel_file" ]; then
-                            local entries=$(jq -r '.entries[].name // empty' "$channel_file" 2>/dev/null | grep -v "^$")
-                            if [ -n "$entries" ]; then
-                                bundle_names="${bundle_names}${entries}"$'\n'
-                            fi
-                        fi
-                    done
-                    
-                    # Combine channel names and bundle names, remove duplicates
-                    channels=$(echo "${channel_names} ${bundle_names}" | tr '\n' ' ' | tr -s ' ' | sed 's/^ *//;s/ *$//')
-                fi
             elif [ -f "$package_json" ]; then
                 # Handle package.json only (fallback)
                 operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
@@ -379,12 +380,27 @@ extract_operator_dependencies() {
             local catalog_json="${operator_dir}/catalog.json"
             local deps_array="[]"
             
-            # Extract dependencies from catalog.json if it exists
-            if [ -f "$catalog_json" ]; then
-                # Parse catalog.json - extract olm.package.required from olm.bundle entries
-                # The file contains multiple JSON objects separated by newlines
+            # Extract dependencies from bundles directory (preferred) or catalog.json
+            local bundles_dir="${operator_dir}/bundles"
+            
+            if [ -d "$bundles_dir" ]; then
+                # Use bundles directory - get dependencies from the latest bundle
+                # Find the latest bundle file (highest version number)
+                local latest_bundle=$(ls -1 "$bundles_dir"/*.json 2>/dev/null | sort -V | tail -1)
+                if [ -n "$latest_bundle" ] && [ -f "$latest_bundle" ]; then
+                    deps_array=$(jq -c '
+                        [.properties // [] | .[] | 
+                         select(.type == "olm.package.required") | .value | 
+                         {packageName: .packageName, versionRange: .versionRange}] | 
+                        unique_by(.packageName)
+                    ' "$latest_bundle" 2>/dev/null || echo "[]")
+                fi
+            elif [ -f "$catalog_json" ]; then
+                # Fallback to catalog.json - extract olm.package.required from olm.bundle entries
+                # Get dependencies from the LAST bundle (latest version) by reversing before unique_by
                 deps_array=$(jq -cs '
-                    [.[] | select(.schema == "olm.bundle") | .properties // [] | .[] | 
+                    [.[] | select(.schema == "olm.bundle")] | reverse | 
+                    [.[] | .properties // [] | .[] | 
                      select(.type == "olm.package.required") | .value | 
                      {packageName: .packageName, versionRange: .versionRange}] | 
                     unique_by(.packageName)
