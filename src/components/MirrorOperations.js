@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 import YAML from 'yaml';
@@ -33,6 +33,10 @@ const MirrorOperations = () => {
   const [mirrorDestinationSubdir, setMirrorDestinationSubdir] = useState('');
   const [notifiedOperations, setNotifiedOperations] = useState(new Set());
   const [showMirrorLocation, setShowMirrorLocation] = useState({});
+  const operationsRef = useRef([]);
+  const notifiedOperationsRef = useRef(new Set());
+  const logStreamOperationIdRef = useRef(null);
+  const lastRunningOperationIdRef = useRef(null);
 
   useEffect(() => {
     fetchOperations();
@@ -43,47 +47,60 @@ const MirrorOperations = () => {
   }, []);
 
   useEffect(() => {
-    if (!runningOperation) {
-      stopLogStream();
-      return;
-    }
-    
-    // Start SSE stream for running operations
-    const stream = startLogStream(runningOperation.id);
-    
-    return () => {
-      if (stream) {
-        stream.close();
+    operationsRef.current = operations;
+  }, [operations]);
+
+  useEffect(() => {
+    notifiedOperationsRef.current = notifiedOperations;
+  }, [notifiedOperations]);
+
+  useEffect(() => {
+    if (runningOperation) {
+      lastRunningOperationIdRef.current = runningOperation.id;
+      if (logStreamOperationIdRef.current !== runningOperation.id) {
+        startLogStream(runningOperation.id);
       }
-    };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runningOperation]);
+
+  useEffect(() => () => stopLogStream(), []);
 
   const fetchOperations = async () => {
     try {
       const response = await axios.get('/api/operations');
-      const previousOps = operations;
+      const previousOps = operationsRef.current;
       setOperations(response.data);
       
       // Check for newly completed operations and show location (only once per operation)
       response.data.forEach(op => {
-        if (op.status === 'success' && op.mirrorDestination && !notifiedOperations.has(op.id)) {
-          const prevOp = previousOps.find(p => p.id === op.id);
-          // Only notify if operation status changed from 'running' to 'success'
-          // Don't notify if prevOp doesn't exist (means it was already successful when page loaded)
-          if (prevOp && prevOp.status === 'running' && op.status === 'success') {
-            toast.success(
-              `✅ Mirror Operation Completed!`,
-              { duration: 5000 }
-            );
-            // Mark this operation as notified
-            setNotifiedOperations(prev => new Set(prev).add(op.id));
-          }
+        const prevOp = previousOps.find(p => p.id === op.id);
+        // Check if operation just completed (was running, now has terminal status)
+        const justCompleted = prevOp && prevOp.status === 'running' && 
+          (op.status === 'success' || op.status === 'failed' || op.status === 'stopped');
+        
+        if (justCompleted) {
+          handleOperationCompleted(op);
         }
       });
       
       // Check if any operation is running
       const running = response.data.find(op => op.status === 'running');
+      if (running) {
+        lastRunningOperationIdRef.current = running.id;
+      }
+
+      if (!running && lastRunningOperationIdRef.current) {
+        const lastOpId = lastRunningOperationIdRef.current;
+        const completedOp = response.data.find(op => op.id === lastOpId);
+        if (completedOp && (completedOp.status === 'success' || completedOp.status === 'failed' || completedOp.status === 'stopped')) {
+          handleOperationCompleted(completedOp);
+          if (logStreamOperationIdRef.current === completedOp.id) {
+            stopLogStream();
+          }
+          lastRunningOperationIdRef.current = null;
+        }
+      }
       setRunningOperation(running);
       
       if (running) {
@@ -102,6 +119,46 @@ const MirrorOperations = () => {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Error fetching configurations:', error);
+    }
+  };
+
+  const handleOperationCompleted = (op) => {
+    if (!op || !op.id) return;
+
+    // Fetch final logs after a short delay to ensure server has finished writing
+    setTimeout(() => fetchLogs(op.id), 500);
+
+    const isTerminalStatus = op.status === 'success' || op.status === 'failed' || op.status === 'stopped';
+    if (!isTerminalStatus) {
+      return;
+    }
+
+    if (!notifiedOperationsRef.current.has(op.id)) {
+      // Mark as notified immediately to avoid double toasts from multiple sources
+      notifiedOperationsRef.current.add(op.id);
+
+      if (op.status === 'success') {
+        toast.success(
+          `Mirror Operation Completed!`,
+          { duration: 5000 }
+        );
+      } else if (op.status === 'failed') {
+        toast.error(
+          `❌ Mirror Operation Failed`,
+          { duration: 5000 }
+        );
+      } else if (op.status === 'stopped') {
+        toast.info(
+          `⚠️ Mirror Operation Stopped`,
+          { duration: 5000 }
+        );
+      }
+
+      setNotifiedOperations(prev => {
+        const next = new Set(prev);
+        next.add(op.id);
+        return next;
+      });
     }
   };
 
@@ -126,16 +183,34 @@ const MirrorOperations = () => {
     // Start new SSE stream
     const eventSource = new EventSource(`/api/operations/${operationId}/logstream`);
     setLogStream(eventSource);
+    logStreamOperationIdRef.current = operationId;
 
     eventSource.onmessage = (event) => {
       setLogs(prevLogs => prevLogs + event.data);
     };
+
+    eventSource.addEventListener('done', (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data);
+      } catch {}
+
+      const status = payload?.status || 'unknown';
+      const completedOp = operationsRef.current.find(op => op.id === operationId) || {
+        id: operationId,
+        status
+      };
+      handleOperationCompleted(completedOp);
+      lastRunningOperationIdRef.current = null;
+      stopLogStream();
+    });
 
     eventSource.onerror = (error) => {
       // eslint-disable-next-line no-console
       console.error('SSE error:', error);
       eventSource.close();
       setLogStream(null);
+      logStreamOperationIdRef.current = null;
     };
 
     return eventSource;
@@ -146,6 +221,7 @@ const MirrorOperations = () => {
       logStream.close();
       setLogStream(null);
     }
+    logStreamOperationIdRef.current = null;
   };
 
   const startOperation = async () => {

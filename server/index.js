@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs').promises;
+const fsNative = require('fs');
+const fs = fsNative.promises;
 const path = require('path');
 const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
@@ -2025,24 +2026,50 @@ app.get('/api/operations/:id/logstream', (req, res) => {
 
   let filePos = 0;
   let finished = false;
+  let idleTicks = 0;
 
-  const sendNewLines = () => {
+  const sendNewLines = async () => {
     if (finished) return;
-    fs.stat(logFile, (err, stats) => {
-      if (err) return;
+    try {
+      const stats = await fs.stat(logFile);
       if (stats.size > filePos) {
-        const stream = fs.createReadStream(logFile, { start: filePos, end: stats.size });
+        const stream = fsNative.createReadStream(logFile, { start: filePos, end: stats.size });
         stream.on('data', chunk => {
           res.write(`data: ${chunk.toString().replace(/\n/g, '\ndata: ')}\n\n`);
         });
         stream.on('end', () => {
           filePos = stats.size;
         });
+        stream.on('error', (error) => {
+          console.error('Error reading log stream:', error);
+        });
+        idleTicks = 0;
+      } else {
+        idleTicks += 1;
       }
-    });
+
+      const isRunning = runningProcesses.has(id);
+      if (!isRunning && idleTicks >= 2) {
+        let status = 'unknown';
+        try {
+          const operation = await getOperation(id);
+          status = operation?.status || status;
+        } catch {}
+
+        res.write(`event: done\ndata: ${JSON.stringify({ id, status })}\n\n`);
+        finished = true;
+        clearInterval(interval);
+        res.end();
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('Error streaming logs:', error);
+      }
+    }
   };
 
   const interval = setInterval(sendNewLines, 1000);
+  sendNewLines();
 
   req.on('close', () => {
     finished = true;
