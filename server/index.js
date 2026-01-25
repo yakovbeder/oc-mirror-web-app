@@ -1891,17 +1891,20 @@ app.get('/api/operations/:id/logs', async (req, res) => {
     const { id } = req.params;
     const operation = await getOperation(id);
     let logs = '';
-    if (operation.logs && operation.logs.length > 0) {
-      logs = operation.logs.join('\n');
-    } else {
-      // Try to read from log file if logs are missing
-      const logFile = path.join(LOGS_DIR, `${id}.log`);
-      try {
-        logs = await fs.readFile(logFile, 'utf8');
-      } catch (e) {
-        logs = '';
+    
+    // Always try to read from log file first for correct chronological order
+    // The log file is written via pipe() which preserves the order of stdout/stderr
+    // whereas operation.logs concatenates stdout + stderr which can cause misordering
+    const logFile = path.join(LOGS_DIR, `${id}.log`);
+    try {
+      logs = await fs.readFile(logFile, 'utf8');
+    } catch (e) {
+      // Fall back to operation.logs if file doesn't exist
+      if (operation.logs && operation.logs.length > 0) {
+        logs = operation.logs.join('\n');
       }
     }
+    
     res.json({ logs });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get operation logs' });
