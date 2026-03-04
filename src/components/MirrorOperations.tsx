@@ -42,7 +42,6 @@ import {
   OutlinedClockIcon,
   EyeIcon,
   EyeSlashIcon,
-  RedoIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useAlerts } from '../AlertContext';
@@ -694,77 +693,24 @@ const MirrorOperations: React.FC = () => {
         </Card>
       )}
 
-      <Card style={{ marginTop: '1rem' }}>
-        <CardHeader>
-          <CardTitle>
-            <Title headingLevel="h3">
-              <InfoCircleIcon /> Operation Details
-            </Title>
-          </CardTitle>
-        </CardHeader>
-        <CardBody>
-          <Flex>
-            <FlexItem grow={{ default: 'grow' }}>
-              <Card isPlain>
-                <CardHeader>
-                  <CardTitle>
-                    <Title headingLevel="h4"><SyncAltIcon /> Current Status</Title>
-                  </CardTitle>
-                </CardHeader>
-                <CardBody>
-                  {runningOperation ? (
-                    <DescriptionList isHorizontal>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Operation</DescriptionListTerm>
-                        <DescriptionListDescription>{runningOperation.name}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Started</DescriptionListTerm>
-                        <DescriptionListDescription>{new Date(runningOperation.startedAt).toLocaleString()}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Duration</DescriptionListTerm>
-                        <DescriptionListDescription>{formatDuration(runningOperation.duration)}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                    </DescriptionList>
-                  ) : (
-                    <EmptyState>
-                      <EmptyStateBody>No operation currently running</EmptyStateBody>
-                    </EmptyState>
-                  )}
-                </CardBody>
-              </Card>
-            </FlexItem>
-            <FlexItem grow={{ default: 'grow' }}>
-              <Card isPlain>
-                <CardHeader>
-                  <CardTitle>
-                    <Title headingLevel="h4"><PlayIcon /> Quick Actions</Title>
-                  </CardTitle>
-                </CardHeader>
-                <CardBody>
-                  <Flex spaceItems={{ default: 'spaceItemsSm' }}>
-                    <FlexItem>
-                      <Button
-                        variant="primary"
-                        onClick={() => { window.location.href = '/config'; }}
-                        isDisabled={!!runningOperation}
-                      >
-                        Create New Config
-                      </Button>
-                    </FlexItem>
-                    <FlexItem>
-                      <Button variant="secondary" icon={<RedoIcon />} onClick={fetchOperations}>
-                        Refresh
-                      </Button>
-                    </FlexItem>
-                  </Flex>
-                </CardBody>
-              </Card>
-            </FlexItem>
-          </Flex>
-        </CardBody>
-      </Card>
+      {runningOperation && (
+        <Alert variant="info" isInline title="Operation in progress" style={{ marginTop: '1rem' }}>
+          <DescriptionList isHorizontal isCompact>
+            <DescriptionListGroup>
+              <DescriptionListTerm>Operation</DescriptionListTerm>
+              <DescriptionListDescription>{runningOperation.name}</DescriptionListDescription>
+            </DescriptionListGroup>
+            <DescriptionListGroup>
+              <DescriptionListTerm>Started</DescriptionListTerm>
+              <DescriptionListDescription>{new Date(runningOperation.startedAt).toLocaleString()}</DescriptionListDescription>
+            </DescriptionListGroup>
+            <DescriptionListGroup>
+              <DescriptionListTerm>Duration</DescriptionListTerm>
+              <DescriptionListDescription>{formatDuration(runningOperation.duration)}</DescriptionListDescription>
+            </DescriptionListGroup>
+          </DescriptionList>
+        </Alert>
+      )}
 
       <Modal
         variant={ModalVariant.small}

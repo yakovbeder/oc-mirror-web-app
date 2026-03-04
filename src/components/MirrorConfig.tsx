@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
@@ -42,7 +42,15 @@ import {
   DescriptionListGroup,
   DescriptionListTerm,
   DescriptionListDescription,
+  Select,
+  SelectOption,
+  SelectList,
+  MenuToggle,
+  TextInputGroup,
+  TextInputGroupMain,
+  TextInputGroupUtilities,
 } from '@patternfly/react-core';
+import { TimesIcon } from '@patternfly/react-icons';
 import {
   ServerIcon,
   CogIcon,
@@ -246,6 +254,10 @@ const MirrorConfig: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string | number>('platform');
   const [customConfigName, setCustomConfigName] = useState('');
   const [showCustomNameInput, setShowCustomNameInput] = useState(false);
+
+  const [operatorSelectOpen, setOperatorSelectOpen] = useState<Record<string, boolean>>({});
+  const [operatorFilterText, setOperatorFilterText] = useState<Record<string, string>>({});
+  const operatorFilterInputRef = useRef<Record<string, HTMLInputElement | null>>({});
 
   const [uploadFilename, setUploadFilename] = useState('');
   const [uploadedContent, setUploadedContent] = useState('');
@@ -1250,6 +1262,7 @@ const MirrorConfig: React.FC = () => {
                 variant="primary"
                 icon={<PlusCircleIcon />}
                 onClick={addPlatformChannel}
+                style={{ marginTop: '1rem' }}
               >
                 Add Platform Channel
               </Button>
@@ -1358,21 +1371,101 @@ const MirrorConfig: React.FC = () => {
                         </CardHeader>
                         <CardBody>
                           <FormGroup label="Operator Name" fieldId={`op-pkg-name-${opIndex}-${pkgIndex}`}>
-                            <FormSelect
-                              id={`op-pkg-name-${opIndex}-${pkgIndex}`}
-                              value={pkg.name}
-                              onChange={(_e, val) =>
-                                updateOperatorPackage(opIndex, pkgIndex, 'name', val)
-                              }
-                            >
-                              <FormSelectOption value="" label="Select an operator..." />
-                              {(operator.availableOperators || [])
-                                .slice()
-                                .sort((a, b) => a.localeCompare(b))
-                                .map(name => (
-                                  <FormSelectOption key={name} value={name} label={name} />
-                                ))}
-                            </FormSelect>
+                            {(() => {
+                              const selectKey = `${opIndex}-${pkgIndex}`;
+                              const isOpen = operatorSelectOpen[selectKey] || false;
+                              const filterText = operatorFilterText[selectKey] || '';
+                              const sorted = (operator.availableOperators || []).slice().sort((a, b) => a.localeCompare(b));
+                              const filtered = filterText
+                                ? sorted.filter(n => n.toLowerCase().includes(filterText.toLowerCase()))
+                                : sorted;
+
+                              const onToggle = () => {
+                                setOperatorSelectOpen(prev => ({ ...prev, [selectKey]: !prev[selectKey] }));
+                                if (!isOpen) {
+                                  setTimeout(() => operatorFilterInputRef.current[selectKey]?.focus(), 0);
+                                }
+                              };
+
+                              const onSelect = (_e: any, value: string | number | undefined) => {
+                                if (value) {
+                                  updateOperatorPackage(opIndex, pkgIndex, 'name', String(value));
+                                }
+                                setOperatorSelectOpen(prev => ({ ...prev, [selectKey]: false }));
+                                setOperatorFilterText(prev => ({ ...prev, [selectKey]: '' }));
+                              };
+
+                              const onFilterChange = (_e: any, value: string) => {
+                                setOperatorFilterText(prev => ({ ...prev, [selectKey]: value }));
+                                if (!isOpen) {
+                                  setOperatorSelectOpen(prev => ({ ...prev, [selectKey]: true }));
+                                }
+                              };
+
+                              const onClear = () => {
+                                setOperatorFilterText(prev => ({ ...prev, [selectKey]: '' }));
+                                updateOperatorPackage(opIndex, pkgIndex, 'name', '');
+                                operatorFilterInputRef.current[selectKey]?.focus();
+                              };
+
+                              const toggle = (toggleRef: React.Ref<any>) => (
+                                <MenuToggle
+                                  ref={toggleRef}
+                                  variant="typeahead"
+                                  onClick={onToggle}
+                                  isExpanded={isOpen}
+                                  isFullWidth
+                                >
+                                  <TextInputGroup isPlain>
+                                    <TextInputGroupMain
+                                      value={isOpen ? filterText : (pkg.name || filterText)}
+                                      onChange={onFilterChange}
+                                      onClick={() => {
+                                        if (!isOpen) setOperatorSelectOpen(prev => ({ ...prev, [selectKey]: true }));
+                                      }}
+                                      innerRef={(el: HTMLInputElement) => {
+                                        operatorFilterInputRef.current[selectKey] = el;
+                                      }}
+                                      placeholder="Type to search operators..."
+                                      autoComplete="off"
+                                    />
+                                    {(pkg.name || filterText) && (
+                                      <TextInputGroupUtilities>
+                                        <Button variant="plain" onClick={onClear} aria-label="Clear">
+                                          <TimesIcon />
+                                        </Button>
+                                      </TextInputGroupUtilities>
+                                    )}
+                                  </TextInputGroup>
+                                </MenuToggle>
+                              );
+
+                              return (
+                                <Select
+                                  id={`op-pkg-name-${opIndex}-${pkgIndex}`}
+                                  isOpen={isOpen}
+                                  selected={pkg.name || undefined}
+                                  onSelect={onSelect}
+                                  onOpenChange={(open) =>
+                                    setOperatorSelectOpen(prev => ({ ...prev, [selectKey]: open }))
+                                  }
+                                  toggle={toggle}
+                                  shouldFocusFirstItemOnOpen={false}
+                                >
+                                  <SelectList style={{ maxHeight: '300px', overflow: 'auto' }}>
+                                    {filtered.length > 0 ? (
+                                      filtered.map(name => (
+                                        <SelectOption key={name} value={name}>
+                                          {name}
+                                        </SelectOption>
+                                      ))
+                                    ) : (
+                                      <SelectOption isDisabled>No results found</SelectOption>
+                                    )}
+                                  </SelectList>
+                                </Select>
+                              );
+                            })()}
                           </FormGroup>
 
                           {pkg.name && (() => {
@@ -1537,7 +1630,7 @@ const MirrorConfig: React.FC = () => {
                 </Card>
               ))}
 
-              <Button variant="primary" icon={<PlusCircleIcon />} onClick={addOperator}>
+              <Button variant="primary" icon={<PlusCircleIcon />} onClick={addOperator} style={{ marginTop: '1rem' }}>
                 Add Operator Catalog
               </Button>
             </Tab>
@@ -1585,7 +1678,7 @@ const MirrorConfig: React.FC = () => {
                 </Card>
               ))}
 
-              <Button variant="primary" icon={<PlusCircleIcon />} onClick={addAdditionalImage}>
+              <Button variant="primary" icon={<PlusCircleIcon />} onClick={addAdditionalImage} style={{ marginTop: '1rem' }}>
                 Add Image
               </Button>
             </Tab>
@@ -1801,6 +1894,27 @@ const MirrorConfig: React.FC = () => {
         <CardBody>
           <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
             <FlexItem>
+              <div style={{ fontSize: '1rem' }}>
+                {showCustomNameInput && customConfigName.trim()
+                  ? `Will save as: ${customConfigName.trim()}.yaml`
+                  : generateDefaultConfigName()}
+              </div>
+            </FlexItem>
+
+            {showCustomNameInput && (
+              <FlexItem>
+                <FormGroup fieldId="custom-config-name" label="Custom configuration name">
+                  <TextInput
+                    id="custom-config-name"
+                    value={customConfigName}
+                    onChange={(_e, val) => setCustomConfigName(val)}
+                    placeholder="Enter name (without .yaml extension)"
+                  />
+                </FormGroup>
+              </FlexItem>
+            )}
+
+            <FlexItem>
               <Split hasGutter>
                 <SplitItem>
                   <Button
@@ -1831,29 +1945,6 @@ const MirrorConfig: React.FC = () => {
                   </Button>
                 </SplitItem>
               </Split>
-            </FlexItem>
-
-            {showCustomNameInput && (
-              <FlexItem>
-                <FormGroup fieldId="custom-config-name" label="Custom configuration name">
-                  <TextInput
-                    id="custom-config-name"
-                    value={customConfigName}
-                    onChange={(_e, val) => setCustomConfigName(val)}
-                    placeholder="Enter name (without .yaml extension)"
-                  />
-                </FormGroup>
-              </FlexItem>
-            )}
-
-            <FlexItem>
-              <HelperText>
-                <HelperTextItem>
-                  {showCustomNameInput && customConfigName.trim()
-                    ? `Will save as: ${customConfigName.trim()}.yaml`
-                    : `Default name: ${generateDefaultConfigName()}`}
-                </HelperTextItem>
-              </HelperText>
             </FlexItem>
           </Flex>
         </CardBody>
