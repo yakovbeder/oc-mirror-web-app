@@ -1,25 +1,22 @@
 #!/bin/bash
 set -e
 
-# Check and attempt to fix permissions for mounted volumes
-# This ensures /app/data is writable by the node user (UID 1000)
-echo "[ENTRYPOINT] Checking permissions for mounted volumes..."
+APP_DATA="/app/data"
+DIRS="$APP_DATA/configs $APP_DATA/operations $APP_DATA/logs $APP_DATA/cache $APP_DATA/mirrors/default"
 
-# Ensure directories exist (including mirrors subdirectory)
-mkdir -p /app/data/configs /app/data/operations /app/data/logs /app/data/cache /app/data/mirrors 2>/dev/null || true
+for d in $DIRS; do
+    mkdir -p "$d"
+done
 
-# Try to make directories writable (best effort - may fail if owned by different user)
-# First try group/world write permissions
-chmod -R 775 /app/data 2>/dev/null || chmod -R 777 /app/data 2>/dev/null || true
+chown -R node:node "$APP_DATA"
+chmod -R 775 "$APP_DATA"
 
-# Check if we can write to the directories
-if [ -w /app/data ]; then
-    echo "[ENTRYPOINT] Permissions OK - directories are writable"
+if su -s /bin/sh node -c "test -w $APP_DATA/configs"; then
+    echo "[ENTRYPOINT] Permissions OK"
 else
-    echo "[ENTRYPOINT] WARNING: Directories may not be writable"
-    echo "[ENTRYPOINT] Ensure host directories are owned by UID 1000 or have world-writable permissions"
+    echo "[ENTRYPOINT] ERROR: $APP_DATA/configs not writable by node user"
+    echo "[ENTRYPOINT] Host fix: sudo chown -R 1000:1000 data/ && sudo chmod -R 775 data/"
+    exit 1
 fi
 
-echo "[ENTRYPOINT] Starting application..."
-exec "$@"
-
+exec runuser -u node -- "$@"

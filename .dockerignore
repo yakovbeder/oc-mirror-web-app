@@ -3,6 +3,7 @@ node_modules/
 
 # Exclude build artifacts
 build/
+dist/
 
 # Exclude git files
 .git/

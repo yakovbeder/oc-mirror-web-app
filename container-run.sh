@@ -80,53 +80,30 @@ check_container_runtime() {
     print_success "$CONTAINER_ENGINE is available and running"
 }
 
-# Fix directory permissions for container user
+# Fix directory permissions for container user (UID 1000 - node user)
+# The entrypoint runs as root and handles permissions inside the container,
+# but we also do a best-effort fix on the host to avoid startup errors.
 fix_permissions() {
-    print_status "Checking directory permissions..."
-    
-    # Check if directories are writable by current user
-    if [ -w "data" ]; then
-        print_success "Directories have proper permissions"
+    print_status "Ensuring data directories are writable by container user (UID 1000)..."
+
+    local data_owner
+    data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
+
+    if [ "$data_owner" = "1000" ]; then
+        print_success "Directories already owned by container user (UID 1000)"
         return 0
     fi
-    
-    # Check if directories are already owned by container user (UID 1000 - node user in node:22-slim image)
-    local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
-    
-    # Container runs as node user (UID 1000), check if ownership needs fixing
-    # Also check mirror directories
-    local mirror_owner=$(stat -c '%u' data/mirrors/ 2>/dev/null || echo "unknown")
-    
-    if [ "$data_owner" != "1000" ] && [ "$data_owner" != "unknown" ]; then
-        print_status "Fixing directory permissions for container user (UID 1000)..."
-        
-        # Try to fix permissions - use 777 (world-writable) to ensure node user can write
-        # This is safe for local data directories and handles volume mount ownership issues
-        if chmod -R 777 data/ 2>/dev/null; then
-            print_success "Permissions set to 777 (world-writable - required for volume mounts)"
-        else
-            print_warning "Could not set permissions. Trying with sudo..."
-            if sudo chmod -R 777 data/ 2>/dev/null; then
-                print_success "Permissions set to 777 with sudo"
-            else
-                print_warning "Could not change permissions even with sudo."
-                print_warning "Manual fix required: sudo chmod -R 777 data/"
-            fi
-        fi
-        
-        # Try to change ownership to node user (UID 1000), but don't fail if we can't
-        if chown -R 1000:1000 data/ 2>/dev/null; then
-            print_success "Ownership changed to container user (UID 1000 - node user)"
-        else
-            print_warning "Could not change ownership (may need sudo). Continuing anyway..."
-            print_warning "To fix manually, run: sudo chown -R 1000:1000 data/"
-        fi
+
+    # Best-effort: try chown first, then chmod as fallback
+    if chown -R 1000:1000 data/ 2>/dev/null; then
+        chmod -R 775 data/ 2>/dev/null || true
+        print_success "Ownership set to UID 1000 (node user)"
+    elif sudo chown -R 1000:1000 data/ 2>/dev/null; then
+        sudo chmod -R 775 data/ 2>/dev/null || true
+        print_success "Ownership set to UID 1000 with sudo"
     else
-        if [ "$data_owner" = "1000" ]; then
-            print_success "Directories already owned by container user (UID 1000)"
-        else
-            print_status "Directories will be created by container with correct permissions"
-        fi
+        print_warning "Could not change host ownership. The container entrypoint will fix permissions as root."
+        print_warning "If problems persist: sudo chown -R 1000:1000 data/"
     fi
 }
 
@@ -207,12 +184,7 @@ create_directories() {
 build_image() {
     print_status "Building container image with $CONTAINER_ENGINE..."
     
-    # Build for native architecture (do not force amd64)
-    # Use Docker format to support HEALTHCHECK (Podman uses OCI by default which doesn't support HEALTHCHECK)
     local build_cmd="$CONTAINER_ENGINE build"
-    if [ "$CONTAINER_ENGINE" = "podman" ]; then
-        build_cmd="$build_cmd --format docker"
-    fi
     
     if [ "$BUILD_NO_CACHE" = "true" ]; then
         print_status "Build cache disabled (BUILD_NO_CACHE=true)"
@@ -378,6 +350,7 @@ case "${1:-}" in
     --run-only)
         check_container_runtime
         detect_system_architecture
+        create_directories
         check_image_exists
         run_container
         show_status

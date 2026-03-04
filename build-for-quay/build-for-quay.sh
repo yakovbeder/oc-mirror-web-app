@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
-VERSION="3.0"  # Semantic versioning
+VERSION="4.0"  # Semantic versioning
 TAG="${VERSION}"
 
 # Colors for output
@@ -174,8 +174,8 @@ show_usage() {
       echo
       echo "Examples:"
       echo "  $0                    # Build and push with default version"
-      echo "  $0 --tag v3.1         # Build and push with custom tag"
-      echo "  $0 --version 3.1      # Build and push with custom version"
+      echo "  $0 --tag v4.0         # Build and push with custom tag"
+      echo "  $0 --version 4.0      # Build and push with custom version"
       echo "  $0 --no-cleanup       # Build and push without cleanup"
 }
 
