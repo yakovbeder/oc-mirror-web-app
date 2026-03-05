@@ -390,40 +390,94 @@ Get available channels for a specific operator.
 }
 ```
 
-#### GET /api/operator-dependencies
-Get dependencies for selected operators.
+#### GET /api/operators/:operator/versions
+Get available versions for a specific operator.
+
+**Parameters:**
+- `operator`: Operator name
 
 **Query Parameters:**
-- `operators` (required): JSON array of operator objects with name and catalog
+- `catalog` (optional): Filter by specific catalog URL
+- `channel` (optional): Filter by channel name
+
+**Response:**
+```json
+{
+  "versions": ["1.0.0", "1.1.0", "1.2.0"]
+}
+```
+
+#### GET /api/operators/channels
+Get channels for an operator from a specific catalog (batch query).
+
+**Query Parameters:**
+- `catalogUrl` (required): Full catalog URL (e.g., `registry.redhat.io/redhat/redhat-operator-index:v4.19`)
+- `operatorName` (required): Operator package name
+
+**Response:**
+```json
+[
+  {
+    "name": "stable-v4.19",
+    "availableVersions": ["4.19.0", "4.19.1", "4.19.2"]
+  }
+]
+```
+
+#### POST /api/operators/refresh-cache
+Force refresh of the operator cache. Clears the cached data and re-fetches from catalog sources.
+
+**Response:**
+```json
+{
+  "message": "Operator cache refreshed successfully"
+}
+```
+
+#### GET /api/operators/:operator/dependencies
+Get dependencies for a specific operator.
+
+**Parameters:**
+- `operator`: Operator name
+
+**Query Parameters:**
+- `catalogUrl` (optional): Specific catalog URL to search. If omitted, searches all catalogs.
 
 **Example Request:**
 ```bash
-curl "http://localhost:3001/api/operator-dependencies?operators=%5B%7B%22name%22%3A%22odf-operator%22%2C%22catalog%22%3A%22registry.redhat.io%2Fredhat%2Fredhat-operator-index%3Av4.18%22%7D%5D"
+curl "http://localhost:3001/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.18"
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "data": {
-    "dependencies": [
-      {
-        "packageName": "mcg-operator",
-        "versionRange": ">=4.9.0 <=4.17.0",
-        "requiredBy": "odf-operator",
-        "catalog": "registry.redhat.io/redhat/redhat-operator-index:v4.18"
-      }
-    ],
-    "operatorsChecked": ["odf-operator"],
-    "catalogsSearched": ["redhat-operator-index:v4.18"]
-  }
+  "operator": "odf-operator",
+  "catalogType": "redhat-operator-index",
+  "catalogVersion": "v4.18",
+  "dependencies": [
+    {
+      "packageName": "mcg-operator",
+      "versionRange": ">=4.9.0 <=4.17.0",
+      "requiredBy": "odf-operator",
+      "catalog": "registry.redhat.io/redhat/redhat-operator-index:v4.18"
+    }
+  ],
+  "count": 1
+}
+```
+
+**Response (no dependencies):**
+```json
+{
+  "operator": "some-operator",
+  "dependencies": [],
+  "message": "No dependencies found for this operator"
 }
 ```
 
 **Notes:**
 - Dependencies are pre-computed during catalog fetch for faster runtime lookups
-- Returns dependencies that are not already in the selected operators list
-- Each dependency includes the operator that requires it and suggested catalog
+- If `catalogUrl` is omitted, searches all available catalogs and returns the first match
 
 ### Operations Management
 
