@@ -13,10 +13,16 @@ A modern web-based interface for managing OpenShift Container Platform mirroring
 - **Podman** (required)
 - **Pull secret** from [console.redhat.com](https://console.redhat.com/openshift/downloads#tool-pull-secret) saved to `pull-secret/pull-secret.json`
 
+### Clone the repository
+
+```bash
+git clone https://github.com/yakovbeder/oc-mirror-web-app.git
+cd oc-mirror-web-app
+```
+
 ### Option 1: Pre-built image (recommended)
 
 ```bash
-cd oc-mirror-web-app
 chmod +x start-app.sh
 ./start-app.sh
 ```
@@ -30,7 +36,6 @@ Manage with: `./start-app.sh --stop`, `./start-app.sh --restart`, `./start-app.s
 ### Option 2: Build locally
 
 ```bash
-cd oc-mirror-web-app
 chmod +x container-run.sh
 
 # First run: build with catalog fetching (required for operator data)
@@ -41,6 +46,17 @@ chmod +x container-run.sh
 ```
 
 Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./container-run.sh --build-only`.
+
+### Updating operator catalogs
+
+The pre-built images ship with operator catalog data for OCP 4.16-4.20. To refresh catalogs with the latest operator versions (e.g. after a new OCP release), run:
+
+```bash
+chmod +x fetch-catalogs-host.sh
+./fetch-catalogs-host.sh
+```
+
+This fetches real catalog data from Red Hat, Certified, and Community operator indexes directly on the host using Podman. Catalogs are cached locally and reused unless older than 7 days. After fetching, rebuild the container with `./container-run.sh` to include the updated data.
 
 ---
 
