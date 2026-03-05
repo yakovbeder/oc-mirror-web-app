@@ -12,6 +12,8 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
+  CodeBlock,
+  CodeBlockCode,
   FileUpload,
   Flex,
   FlexItem,
@@ -249,8 +251,8 @@ const MirrorConfig: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string | number>('platform');
   const [customConfigName, setCustomConfigName] = useState('');
-  const [previewEdited, setPreviewEdited] = useState(false);
-  const [previewText, setPreviewText] = useState('');
+  const [isEditingPreview, setIsEditingPreview] = useState(false);
+  const [editedYaml, setEditedYaml] = useState('');
   const [showCustomNameInput, setShowCustomNameInput] = useState(false);
 
   const [operatorSelectOpen, setOperatorSelectOpen] = useState<Record<string, boolean>>({});
@@ -1058,11 +1060,19 @@ const MirrorConfig: React.FC = () => {
   };
 
   const yamlPreview = YAML.stringify(generateCleanConfig(), { indent: 2 });
-  const displayedYaml = previewEdited ? previewText : yamlPreview;
+  const startEditingPreview = () => {
+    setEditedYaml(yamlPreview);
+    setIsEditingPreview(true);
+  };
+
+  const cancelEditingPreview = () => {
+    setIsEditingPreview(false);
+    setEditedYaml('');
+  };
 
   const applyPreviewEdits = () => {
     try {
-      const parsed = YAML.parse(previewText);
+      const parsed = YAML.parse(editedYaml);
 
       if (!parsed || parsed.kind !== 'ImageSetConfiguration') {
         addDangerAlert('Invalid YAML: Must be an ImageSetConfiguration');
@@ -1117,7 +1127,8 @@ const MirrorConfig: React.FC = () => {
         },
       });
 
-      setPreviewEdited(false);
+      setIsEditingPreview(false);
+      setEditedYaml('');
       addSuccessAlert('YAML changes applied to form editor');
     } catch (err: any) {
       addDangerAlert(`Invalid YAML: ${err.message}`);
@@ -1688,19 +1699,30 @@ const MirrorConfig: React.FC = () => {
               <Split hasGutter>
                 <SplitItem isFilled>
                   <Title headingLevel="h3"><EyeIcon /> Configuration Preview</Title>
-                  <p>Preview the generated YAML configuration.</p>
+                  <p>Preview and edit the generated YAML configuration.</p>
                 </SplitItem>
                 <SplitItem>
-                  <Button
-                    variant="secondary"
-                    icon={<CopyIcon />}
-                    onClick={() => {
-                      navigator.clipboard.writeText(displayedYaml);
-                      addSuccessAlert('YAML configuration copied to clipboard!');
-                    }}
-                  >
-                    Copy YAML
-                  </Button>
+                  <Split hasGutter>
+                    <SplitItem>
+                      <Button
+                        variant="secondary"
+                        icon={<CopyIcon />}
+                        onClick={() => {
+                          navigator.clipboard.writeText(isEditingPreview ? editedYaml : yamlPreview);
+                          addSuccessAlert('YAML configuration copied to clipboard!');
+                        }}
+                      >
+                        Copy YAML
+                      </Button>
+                    </SplitItem>
+                    {!isEditingPreview && (
+                      <SplitItem>
+                        <Button variant="secondary" onClick={startEditingPreview}>
+                          Edit
+                        </Button>
+                      </SplitItem>
+                    )}
+                  </Split>
                 </SplitItem>
               </Split>
 
@@ -1733,31 +1755,38 @@ const MirrorConfig: React.FC = () => {
                 </CardBody>
               </Card>
 
-              <TextArea
-                id="yaml-preview-editor"
-                value={displayedYaml}
-                onChange={(_e, val) => {
-                  setPreviewText(val);
-                  setPreviewEdited(true);
-                }}
-                aria-label="YAML configuration editor"
-                autoResize
-                style={{
-                  fontFamily: 'var(--pf-v6-global--FontFamily--mono, "Red Hat Mono", monospace)',
-                  fontSize: '0.875rem',
-                  minHeight: '300px',
-                  lineHeight: 1.5,
-                }}
-              />
-
-              {previewEdited && (
-                <Button
-                  variant="primary"
-                  onClick={applyPreviewEdits}
-                  style={{ marginTop: '0.5rem' }}
-                >
-                  Apply Changes
-                </Button>
+              {isEditingPreview ? (
+                <>
+                  <TextArea
+                    id="yaml-preview-editor"
+                    value={editedYaml}
+                    onChange={(_e, val) => setEditedYaml(val)}
+                    aria-label="YAML configuration editor"
+                    style={{
+                      fontFamily: 'var(--pf-v6-global--FontFamily--mono, "Red Hat Mono", monospace)',
+                      fontSize: '0.875rem',
+                      minHeight: '400px',
+                      lineHeight: 1.5,
+                      resize: 'vertical',
+                    }}
+                  />
+                  <Split hasGutter style={{ marginTop: '0.5rem' }}>
+                    <SplitItem>
+                      <Button variant="primary" onClick={applyPreviewEdits}>
+                        Apply Changes
+                      </Button>
+                    </SplitItem>
+                    <SplitItem>
+                      <Button variant="link" onClick={cancelEditingPreview}>
+                        Cancel
+                      </Button>
+                    </SplitItem>
+                  </Split>
+                </>
+              ) : (
+                <CodeBlock>
+                  <CodeBlockCode id="yaml-preview">{yamlPreview}</CodeBlockCode>
+                </CodeBlock>
               )}
             </Tab>
 

@@ -15,6 +15,8 @@ import {
   Brand,
   Label,
   Spinner,
+  Title,
+  Content,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
@@ -87,11 +89,6 @@ const AppLayout: React.FC = () => {
       <MastheadContent>
         <Toolbar>
           <ToolbarContent>
-            <ToolbarItem>
-              <span style={{ fontWeight: 600, fontSize: '1rem' }}>
-                OC Mirror v2 Web Application
-              </span>
-            </ToolbarItem>
             <ToolbarItem align={{ default: 'alignEnd' }}>
               <Label color="blue">v4.0</Label>
             </ToolbarItem>
@@ -103,6 +100,12 @@ const AppLayout: React.FC = () => {
 
   return (
     <Page masthead={masthead} sidebar={sidebar}>
+      <PageSection style={{ paddingBottom: 0 }}>
+        <Title headingLevel="h1" size="2xl">OC Mirror v2 Web Application</Title>
+        <Content component="p" style={{ color: 'var(--pf-v6-global--Color--200)' }}>
+          OpenShift Container Platform Mirroring Operations
+        </Content>
+      </PageSection>
       <PageSection>
         <Suspense
           fallback={
