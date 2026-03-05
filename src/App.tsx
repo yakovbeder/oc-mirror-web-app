@@ -88,6 +88,11 @@ const AppLayout: React.FC = () => {
         <Toolbar>
           <ToolbarContent>
             <ToolbarItem>
+              <span style={{ fontWeight: 600, fontSize: '1rem' }}>
+                OC Mirror v2 Web Application
+              </span>
+            </ToolbarItem>
+            <ToolbarItem align={{ default: 'alignEnd' }}>
               <Label color="blue">v4.0</Label>
             </ToolbarItem>
           </ToolbarContent>

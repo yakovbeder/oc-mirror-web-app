@@ -12,6 +12,9 @@ import {
   Button,
   Label,
   Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   ModalVariant,
   CodeBlock,
   CodeBlockCode,
@@ -714,23 +717,40 @@ const MirrorOperations: React.FC = () => {
 
       <Modal
         variant={ModalVariant.small}
-        title={isDeleteConfig ? 'Delete Configuration' : 'Delete Operation'}
         isOpen={showDeleteModal}
         onClose={() => {
           setShowDeleteModal(false);
           setDeleteFilename('');
           setDeleteOperationId(null);
         }}
-        actions={[
+        aria-label="Delete confirmation"
+      >
+        <ModalHeader title={isDeleteConfig ? 'Delete Configuration' : 'Delete Operation'} />
+        <ModalBody>
+          {isDeleteConfig ? (
+            <>
+              <p>
+                Are you sure you want to delete configuration <span style={{ fontWeight: 600 }}>&quot;{deleteFilename}&quot;</span>?
+              </p>
+              <br />
+              <Alert variant="warning" isInline isPlain title="This action cannot be undone." />
+            </>
+          ) : (
+            <>
+              <p>Are you sure you want to delete this operation?</p>
+              <br />
+              <Alert variant="warning" isInline isPlain title="This action cannot be undone." />
+            </>
+          )}
+        </ModalBody>
+        <ModalFooter>
           <Button
-            key="confirm"
             variant="danger"
             onClick={isDeleteConfig ? confirmDeleteConfig : confirmDeleteOperation}
           >
             Delete
-          </Button>,
+          </Button>
           <Button
-            key="cancel"
             variant="link"
             onClick={() => {
               setShowDeleteModal(false);
@@ -739,22 +759,8 @@ const MirrorOperations: React.FC = () => {
             }}
           >
             Cancel
-          </Button>,
-        ]}
-      >
-        {isDeleteConfig ? (
-          <>
-            Are you sure you want to delete configuration <span style={{ fontWeight: 600 }}>&quot;{deleteFilename}&quot;</span>?
-            <br /><br />
-            <Alert variant="warning" isInline isPlain title="This action cannot be undone." />
-          </>
-        ) : (
-          <>
-            Are you sure you want to delete this operation?
-            <br /><br />
-            <Alert variant="warning" isInline isPlain title="This action cannot be undone." />
-          </>
-        )}
+          </Button>
+        </ModalFooter>
       </Modal>
     </div>
   );

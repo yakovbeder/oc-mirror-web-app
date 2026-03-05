@@ -12,8 +12,6 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
-  CodeBlock,
-  CodeBlockCode,
   FileUpload,
   Flex,
   FlexItem,
@@ -25,8 +23,6 @@ import {
   HelperText,
   HelperTextItem,
   Label,
-  Modal,
-  ModalVariant,
   Popover,
   Spinner,
   Split,
@@ -253,6 +249,8 @@ const MirrorConfig: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string | number>('platform');
   const [customConfigName, setCustomConfigName] = useState('');
+  const [previewEdited, setPreviewEdited] = useState(false);
+  const [previewText, setPreviewText] = useState('');
   const [showCustomNameInput, setShowCustomNameInput] = useState(false);
 
   const [operatorSelectOpen, setOperatorSelectOpen] = useState<Record<string, boolean>>({});
@@ -263,11 +261,7 @@ const MirrorConfig: React.FC = () => {
   const [uploadedContent, setUploadedContent] = useState('');
   const [parsedUpload, setParsedUpload] = useState<Record<string, any> | null>(null);
   const [uploadError, setUploadError] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [isUploadLoading, setIsUploadLoading] = useState(false);
-
-  const [conflictModalOpen, setConflictModalOpen] = useState(false);
-  const [conflictFilename, setConflictFilename] = useState('');
 
   const operatorCatalogs: CatalogInfo[] =
     availableCatalogs.length > 0 ? availableCatalogs : FALLBACK_CATALOGS;
@@ -1063,74 +1057,72 @@ const MirrorConfig: React.FC = () => {
     addSuccessAlert('Configuration loaded into editor. Switch between tabs to modify.');
   };
 
-  const saveUploadedConfig = async () => {
-    if (!parsedUpload || !uploadFilename) {
-      addDangerAlert('No valid configuration to save');
-      return;
-    }
-
-    let filename = uploadFilename || `config-${Date.now()}.yaml`;
-    if (!filename.endsWith('.yaml') && !filename.endsWith('.yml')) {
-      filename = `${filename}.yaml`;
-    }
-
-    try {
-      setUploading(true);
-      await axios.post('/api/config/upload', { filename, content: uploadedContent });
-      addSuccessAlert('Configuration uploaded successfully!');
-      resetUploadState();
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        setConflictFilename(filename);
-        setConflictModalOpen(true);
-      } else {
-        console.error('Error saving configuration:', err);
-        addDangerAlert(
-          'Failed to save configuration: ' + (err.response?.data?.message || err.message),
-        );
-      }
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleOverwriteConfirm = async () => {
-    try {
-      setUploading(true);
-      setConflictModalOpen(false);
-      await axios.post('/api/config/save', { config: uploadedContent, name: conflictFilename });
-      addSuccessAlert('Configuration uploaded and overwritten successfully!');
-      resetUploadState();
-    } catch (err: any) {
-      console.error('Error saving configuration:', err);
-      addDangerAlert(
-        'Failed to save configuration: ' + (err.response?.data?.message || err.message),
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleAutoRename = async () => {
-    try {
-      setUploading(true);
-      setConflictModalOpen(false);
-      const nameNoExt = conflictFilename.replace(/\.(yaml|yml)$/, '');
-      const newName = `${nameNoExt}-${Date.now()}.yaml`;
-      await axios.post('/api/config/upload', { filename: newName, content: uploadedContent });
-      addSuccessAlert(`Configuration uploaded as "${newName}"!`);
-      resetUploadState();
-    } catch (err: any) {
-      console.error('Error saving configuration:', err);
-      addDangerAlert(
-        'Failed to save configuration: ' + (err.response?.data?.message || err.message),
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const yamlPreview = YAML.stringify(generateCleanConfig(), { indent: 2 });
+  const displayedYaml = previewEdited ? previewText : yamlPreview;
+
+  const applyPreviewEdits = () => {
+    try {
+      const parsed = YAML.parse(previewText);
+
+      if (!parsed || parsed.kind !== 'ImageSetConfiguration') {
+        addDangerAlert('Invalid YAML: Must be an ImageSetConfiguration');
+        return;
+      }
+      if (!parsed.apiVersion?.includes('mirror.openshift.io')) {
+        addDangerAlert('Invalid YAML: Must have mirror.openshift.io API version');
+        return;
+      }
+      if (!parsed.mirror) {
+        addDangerAlert('Invalid YAML: Missing mirror section');
+        return;
+      }
+
+      const mirror = parsed.mirror || {};
+      const platformChannels: PlatformChannel[] = (mirror.platform?.channels || []).map(
+        (ch: any) => ({
+          name: ch.name || '',
+          minVersion: ch.minVersion || '',
+          maxVersion: ch.maxVersion || '',
+          type: ch.type || 'ocp',
+          shortestPath: ch.shortestPath || false,
+        }),
+      );
+      const operators: OperatorCatalog[] = (mirror.operators || []).map((op: any) => ({
+        catalog: op.catalog || '',
+        catalogVersion: op.catalog?.split(':').pop() || '',
+        availableOperators: [],
+        packages: (op.packages || []).map((pkg: any) => ({
+          name: pkg.name || '',
+          channels: (pkg.channels || []).map((ch: any) => ({
+            name: ch.name || '',
+            minVersion: ch.minVersion || '',
+            maxVersion: ch.maxVersion || '',
+          })),
+        })),
+      }));
+      const additionalImages: { name: string }[] = (mirror.additionalImages || []).map(
+        (img: any) => ({ name: img.name || '' }),
+      );
+      const archiveSize = parsed.archiveSize != null ? String(parsed.archiveSize) : '';
+
+      setConfig({
+        kind: parsed.kind,
+        apiVersion: parsed.apiVersion,
+        archiveSize,
+        mirror: {
+          platform: { channels: platformChannels, graph: mirror.platform?.graph ?? true },
+          operators,
+          additionalImages,
+          helm: { repositories: [] },
+        },
+      });
+
+      setPreviewEdited(false);
+      addSuccessAlert('YAML changes applied to form editor');
+    } catch (err: any) {
+      addDangerAlert(`Invalid YAML: ${err.message}`);
+    }
+  };
 
   return (
     <div>
@@ -1703,7 +1695,7 @@ const MirrorConfig: React.FC = () => {
                     variant="secondary"
                     icon={<CopyIcon />}
                     onClick={() => {
-                      navigator.clipboard.writeText(yamlPreview);
+                      navigator.clipboard.writeText(displayedYaml);
                       addSuccessAlert('YAML configuration copied to clipboard!');
                     }}
                   >
@@ -1741,9 +1733,32 @@ const MirrorConfig: React.FC = () => {
                 </CardBody>
               </Card>
 
-              <CodeBlock>
-                <CodeBlockCode id="yaml-preview">{yamlPreview}</CodeBlockCode>
-              </CodeBlock>
+              <TextArea
+                id="yaml-preview-editor"
+                value={displayedYaml}
+                onChange={(_e, val) => {
+                  setPreviewText(val);
+                  setPreviewEdited(true);
+                }}
+                aria-label="YAML configuration editor"
+                autoResize
+                style={{
+                  fontFamily: 'var(--pf-v6-global--FontFamily--mono, "Red Hat Mono", monospace)',
+                  fontSize: '0.875rem',
+                  minHeight: '300px',
+                  lineHeight: 1.5,
+                }}
+              />
+
+              {previewEdited && (
+                <Button
+                  variant="primary"
+                  onClick={applyPreviewEdits}
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  Apply Changes
+                </Button>
+              )}
             </Tab>
 
             <Tab
@@ -1861,17 +1876,6 @@ const MirrorConfig: React.FC = () => {
                       </Button>
                     </SplitItem>
                     <SplitItem>
-                      <Button
-                        variant="secondary"
-                        icon={<SaveIcon />}
-                        onClick={saveUploadedConfig}
-                        isDisabled={!parsedUpload || uploading}
-                        isLoading={uploading}
-                      >
-                        Save Configuration
-                      </Button>
-                    </SplitItem>
-                    <SplitItem>
                       <Button variant="link" onClick={resetUploadState}>
                         Clear
                       </Button>
@@ -1950,46 +1954,6 @@ const MirrorConfig: React.FC = () => {
         </CardBody>
       </Card>
 
-      <Modal
-        variant={ModalVariant.small}
-        title="File Already Exists"
-        titleIconVariant="warning"
-        isOpen={conflictModalOpen}
-        onClose={() => setConflictModalOpen(false)}
-        actions={[
-          <Button
-            key="cancel"
-            variant="link"
-            onClick={() => setConflictModalOpen(false)}
-            isDisabled={uploading}
-          >
-            Cancel
-          </Button>,
-          <Button
-            key="rename"
-            variant="warning"
-            onClick={handleAutoRename}
-            isDisabled={uploading}
-            isLoading={uploading}
-          >
-            Auto-rename
-          </Button>,
-          <Button
-            key="overwrite"
-            variant="danger"
-            onClick={handleOverwriteConfirm}
-            isDisabled={uploading}
-            isLoading={uploading}
-          >
-            Overwrite
-          </Button>,
-        ]}
-      >
-        <p>
-          Configuration file <span style={{ fontWeight: 600 }}>&quot;{conflictFilename}&quot;</span> already exists.
-        </p>
-        <p>Choose how you want to save this configuration:</p>
-      </Modal>
     </div>
   );
 };
