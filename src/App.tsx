@@ -29,7 +29,7 @@ import {
   WrenchIcon,
 } from '@patternfly/react-icons';
 import { AlertProvider } from './AlertContext';
-import redhatLogo from '/redhat-logo.svg';
+import redhatLogo from '/Logo-Red.svg';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const MirrorConfig = lazy(() => import('./components/MirrorConfig'));
@@ -87,8 +87,16 @@ const AppLayout: React.FC = () => {
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
-        <Toolbar>
+        <Toolbar style={{ width: '100%' }}>
           <ToolbarContent>
+            <ToolbarItem>
+              <div style={{ borderLeft: '1px solid var(--pf-v6-global--BorderColor--100)', paddingLeft: '16px', marginLeft: '8px' }}>
+                <Title headingLevel="h1" size="2xl" style={{ lineHeight: 1.2, fontSize: '2rem' }}>OC Mirror v2 Web Application</Title>
+                <Content component="p" style={{ color: 'var(--pf-v6-global--Color--200)', fontSize: '1.25rem', lineHeight: 1.2 }}>
+                  OpenShift Container Platform Mirroring Operations
+                </Content>
+              </div>
+            </ToolbarItem>
             <ToolbarItem align={{ default: 'alignEnd' }}>
               <Label color="blue">v4.0</Label>
             </ToolbarItem>
@@ -100,12 +108,6 @@ const AppLayout: React.FC = () => {
 
   return (
     <Page masthead={masthead} sidebar={sidebar}>
-      <PageSection style={{ paddingBottom: 0 }}>
-        <Title headingLevel="h1" size="2xl">OC Mirror v2 Web Application</Title>
-        <Content component="p" style={{ color: 'var(--pf-v6-global--Color--200)' }}>
-          OpenShift Container Platform Mirroring Operations
-        </Content>
-      </PageSection>
       <PageSection>
         <Suspense
           fallback={
