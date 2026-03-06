@@ -18,7 +18,6 @@ import {
   Flex,
   FlexItem,
   FormGroup,
-  FormGroupLabelHelp,
   FormSelect,
   FormSelectOption,
   Grid,
@@ -60,8 +59,8 @@ import {
   TrashIcon,
   CopyIcon,
   DownloadIcon,
+  InfoCircleIcon,
   SaveIcon,
-  OutlinedQuestionCircleIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   TimesCircleIcon,
@@ -313,6 +312,26 @@ const getSelectableVersions = (
   });
 };
 
+const sanitizeArchiveSizeInput = (value: string): string => value.replace(/\D+/g, '');
+
+const getArchiveSizeValidationMessage = (value: string): string => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return '';
+  }
+
+  if (!/^\d+$/.test(trimmedValue)) {
+    return 'Archive size must contain digits only';
+  }
+
+  if (Number.parseInt(trimmedValue, 10) <= 0) {
+    return 'Archive size must be greater than 0';
+  }
+
+  return '';
+};
+
 const clearMismatchedPlatformVersions = (channel: PlatformChannel): PlatformChannel => {
   const channelLine = getChannelVersionLine(channel.name);
   if (!channelLine) return channel;
@@ -380,6 +399,34 @@ const sanitizePlatformChannelValue = (
 
   return { channel, message: '' };
 };
+
+const InfoPopoverButton = ({
+  ariaLabel,
+  bodyContent,
+}: {
+  ariaLabel: string;
+  bodyContent: React.ReactNode;
+}) => (
+  <Popover bodyContent={bodyContent}>
+    <Button
+      variant="plain"
+      aria-label={ariaLabel}
+      hasNoPadding
+      type="button"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 'auto',
+        height: '1.25rem',
+        lineHeight: 1,
+        color: 'var(--pf-t--global--text--color--regular, #151515)',
+      }}
+    >
+      <InfoCircleIcon style={{ fontSize: '0.875rem' }} />
+    </Button>
+  </Popover>
+);
 
 const generateDefaultConfigName = (): string => {
   const now = new Date();
@@ -998,8 +1045,9 @@ const MirrorConfig: React.FC = () => {
       mirror: { operators: [] },
     };
 
-    if (config.archiveSize && parseInt(config.archiveSize) > 0) {
-      clean.archiveSize = parseInt(config.archiveSize);
+    const archiveSizeValue = config.archiveSize.trim();
+    if (archiveSizeValue && !getArchiveSizeValidationMessage(archiveSizeValue)) {
+      clean.archiveSize = Number.parseInt(archiveSizeValue, 10);
     }
 
     if (config.mirror.additionalImages?.length > 0) {
@@ -1042,9 +1090,16 @@ const MirrorConfig: React.FC = () => {
     const hasPlatform = currentConfig.mirror.platform.channels.length > 0;
     const hasOps = currentConfig.mirror.operators.length > 0;
     const hasImages = currentConfig.mirror.additionalImages.length > 0;
+    const archiveSizeValidationMessage = getArchiveSizeValidationMessage(
+      currentConfig.archiveSize,
+    );
 
     if (!hasPlatform && !hasOps && !hasImages) {
       errors.push('At least one platform channel, operator, or additional image is required');
+    }
+
+    if (archiveSizeValidationMessage) {
+      errors.push(archiveSizeValidationMessage);
     }
 
     currentConfig.mirror.platform.channels.forEach((ch, i) => {
@@ -1400,7 +1455,28 @@ const MirrorConfig: React.FC = () => {
               }
             >
               <br />
-              <Title headingLevel="h3"><ServerIcon /> Platform Channels</Title>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                }}
+              >
+                <Title headingLevel="h3" style={{ margin: 0 }}>
+                  <ServerIcon /> Platform Channels
+                </Title>
+                <InfoPopoverButton
+                  ariaLabel="Platform channel version guidance"
+                  bodyContent={
+                    <div>
+                      Use full OpenShift versions like `4.16.0` and `4.16.10`.
+                      Leave both fields empty to mirror the entire channel.
+                      Min and max must stay within the selected channel line, and
+                      min cannot be greater than max.
+                    </div>
+                  }
+                />
+              </div>
               <p>Configure OpenShift Container Platform channels to mirror.</p>
 
               {config.mirror.platform.channels.map((channel, index) => (
@@ -1449,7 +1525,6 @@ const MirrorConfig: React.FC = () => {
                             value={channel.minVersion}
                             onChange={(_e, val) => updatePlatformChannel(index, 'minVersion', val)}
                             onBlur={() => validatePlatformChannel(index, 'minVersion')}
-                            placeholder="e.g., 4.16.0"
                           />
                         </FormGroup>
                       </GridItem>
@@ -1463,7 +1538,6 @@ const MirrorConfig: React.FC = () => {
                             value={channel.maxVersion}
                             onChange={(_e, val) => updatePlatformChannel(index, 'maxVersion', val)}
                             onBlur={() => validatePlatformChannel(index, 'maxVersion')}
-                            placeholder="e.g., 4.16.10"
                           />
                         </FormGroup>
                       </GridItem>
@@ -1967,32 +2041,53 @@ const MirrorConfig: React.FC = () => {
                 </SplitItem>
               </Split>
 
-              <Card isPlain isCompact style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-                <CardBody>
-                  <FormGroup
-                    label="Archive Size (GiB)"
-                    fieldId="archive-size"
-                    labelHelp={
-                      <Popover
-                        bodyContent="Maximum size (in GiB) for archive files when mirroring to disk. Leave empty to use default behavior."
+              <Card
+                isPlain
+                isCompact
+                style={{ marginTop: '1rem', marginBottom: '1.5rem', overflow: 'visible' }}
+              >
+                <CardBody style={{ padding: 0 }}>
+                  <Grid hasGutter>
+                    <GridItem span={3}>
+                      <FormGroup
+                        label={
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                            }}
+                          >
+                            <span>Archive Size (GiB)</span>
+                            <InfoPopoverButton
+                              ariaLabel="Archive size guidance"
+                              bodyContent={
+                                <div>
+                                  Maximum size in GiB for each archive when mirroring to disk.
+                                  Leave this blank to use the default behavior.
+                                </div>
+                              }
+                            />
+                          </span>
+                        }
+                        fieldId="archive-size"
                       >
-                        <FormGroupLabelHelp aria-label="Archive size help">
-                          <OutlinedQuestionCircleIcon />
-                        </FormGroupLabelHelp>
-                      </Popover>
-                    }
-                  >
-                    <TextInput
-                      id="archive-size"
-                      type="number"
-                      value={config.archiveSize}
-                      onChange={(_e, val) =>
-                        setConfig(prev => ({ ...prev, archiveSize: val }))
-                      }
-                      placeholder="e.g., 4"
-                      style={{ maxWidth: '200px' }}
-                    />
-                  </FormGroup>
+                        <TextInput
+                          id="archive-size"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={config.archiveSize}
+                          onChange={(_e, val) =>
+                            setConfig(prev => ({
+                              ...prev,
+                              archiveSize: sanitizeArchiveSizeInput(val),
+                            }))
+                          }
+                        />
+                      </FormGroup>
+                    </GridItem>
+                  </Grid>
                 </CardBody>
               </Card>
 
