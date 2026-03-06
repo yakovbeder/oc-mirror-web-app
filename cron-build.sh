@@ -14,7 +14,7 @@ FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-true}"
 
 read_project_version() {
     if [ ! -f "${PACKAGE_JSON}" ]; then
-        echo "4.1"
+        echo "4.2"
         return 0
     fi
 
@@ -24,7 +24,7 @@ read_project_version() {
     if [ -n "${package_version}" ]; then
         echo "${package_version}"
     else
-        echo "4.1"
+        echo "4.2"
     fi
 }
 

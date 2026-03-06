@@ -2,7 +2,7 @@ FROM node:22-slim AS builder
 
 ARG BUILD_DATE=""
 ARG VCS_REF=""
-ARG VERSION=4.1
+ARG VERSION=4.2
 
 WORKDIR /app
 RUN npm install -g npm@11.6.2
@@ -25,7 +25,7 @@ FROM node:22-slim AS production
 
 ARG BUILD_DATE=""
 ARG VCS_REF=""
-ARG VERSION=4.1
+ARG VERSION=4.2
 ARG TARGETARCH
 
 RUN npm install -g npm@11.6.2
