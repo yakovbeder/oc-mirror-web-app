@@ -5,11 +5,14 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
 # Configuration
 IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
 CONTAINER_NAME="oc-mirror-web-app"
 WEB_PORT="3000"
-API_PORT="3001"
+CONTAINER_PORT="3001"
 DATA_DIR="data"
 
 # Colors for output
@@ -82,6 +85,10 @@ is_container_running() {
     $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"
 }
 
+container_exists() {
+    $CONTAINER_ENGINE ps -a --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"
+}
+
 # Stop container
 stop_container() {
     print_status "Stopping container: $CONTAINER_NAME"
@@ -100,86 +107,57 @@ stop_container() {
     print_success "Container stopped and removed"
 }
 
+# Check pull secret
+check_pull_secret() {
+    local pull_secret_path="${SCRIPT_DIR}/pull-secret/pull-secret.json"
+
+    if [ ! -s "${pull_secret_path}" ]; then
+        print_error "Required pull secret not found at ${pull_secret_path}"
+        print_error "Download it from https://console.redhat.com/openshift/downloads#tool-pull-secret"
+        print_error "and save it to pull-secret/pull-secret.json before starting the app."
+        exit 1
+    fi
+
+    print_success "Found pull secret at ${pull_secret_path}"
+}
+
 # Fix directory permissions for container user
 fix_permissions() {
-    print_status "Checking directory permissions..."
-    
-    # Check if directories are writable by current user
-    if [ -w "data" ]; then
-        print_success "Directories have proper permissions"
+    print_status "Ensuring data directories are writable by container user (UID 1000)..."
+
+    local data_owner
+    data_owner=$(stat -c '%u' "${DATA_DIR}/" 2>/dev/null || echo "unknown")
+
+    if [ "$data_owner" = "1000" ]; then
+        print_success "Directories already owned by container user (UID 1000)"
         return 0
     fi
-    
-    # Check if directories are already owned by container user (UID 1000 - node user in node:22-slim image)
-    local data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
-    
-    # Container runs as node user (UID 1000), check if ownership needs fixing
-    # Also check mirror directories
-    local mirror_owner=$(stat -c '%u' data/mirrors/ 2>/dev/null || echo "unknown")
-    
-    if [ "$data_owner" != "1000" ] && [ "$data_owner" != "unknown" ]; then
-        print_status "Fixing directory permissions for container user (UID 1000)..."
-        
-        # Try to fix permissions - use 777 (world-writable) to ensure node user can write
-        # This is safe for local data directories and handles volume mount ownership issues
-        if chmod -R 777 data/ 2>/dev/null; then
-            print_success "Permissions set to 777 (world-writable - required for volume mounts)"
-        else
-            print_warning "Could not set permissions. Trying with sudo..."
-            if sudo chmod -R 777 data/ 2>/dev/null; then
-                print_success "Permissions set to 777 with sudo"
-            else
-                print_warning "Could not change permissions even with sudo."
-                print_warning "Manual fix required: sudo chmod -R 777 data/"
-            fi
-        fi
-        
-        # Try to change ownership to node user (UID 1000), but don't fail if we can't
-        if chown -R 1000:1000 data/ 2>/dev/null; then
-            print_success "Ownership changed to container user (UID 1000 - node user)"
-        else
-            print_warning "Could not change ownership (may need sudo). Continuing anyway..."
-            print_warning "To fix manually, run: sudo chown -R 1000:1000 data/"
-        fi
+
+    if chown -R 1000:1000 "${DATA_DIR}/" 2>/dev/null; then
+        chmod -R 775 "${DATA_DIR}/" 2>/dev/null || true
+        print_success "Ownership set to UID 1000 (node user)"
+    elif sudo chown -R 1000:1000 "${DATA_DIR}/" 2>/dev/null; then
+        sudo chmod -R 775 "${DATA_DIR}/" 2>/dev/null || true
+        print_success "Ownership set to UID 1000 with sudo"
     else
-        if [ "$data_owner" = "1000" ]; then
-            print_success "Directories already owned by container user (UID 1000)"
-        else
-            print_status "Directories will be created by container with correct permissions"
-        fi
+        print_warning "Could not change host ownership. The container entrypoint will fix permissions as root."
+        print_warning "If problems persist, run: sudo chown -R 1000:1000 ${DATA_DIR}/"
     fi
 }
 
 # Create data directories
 create_data_directories() {
-    print_status "Checking data directories..."
-    
-    # Create directories if they don't exist
-    if [ ! -d "$DATA_DIR" ]; then
-        print_status "Creating data directory structure..."
-        mkdir -p "$DATA_DIR"/{configs,operations,logs,cache}
-    else
-        print_success "Data directory already exists"
-    fi
-    
-    # Create default mirror directory in mounted volume (persistent)
-    if [ ! -d "$DATA_DIR/mirrors" ]; then
-        print_status "Creating mirror storage base directory..."
-        mkdir -p "$DATA_DIR/mirrors"
-        chmod -R 777 "$DATA_DIR/mirrors" 2>/dev/null || true
-        print_success "Created $DATA_DIR/mirrors (persistent mirror location - survives container restarts)"
-    else
-        print_success "Mirror storage directory already exists"
-        chmod -R 777 "$DATA_DIR/mirrors" 2>/dev/null || true
-    fi
-    
-    # Ensure default subdirectory exists
-    if [ ! -d "$DATA_DIR/mirrors/default" ]; then
-        mkdir -p "$DATA_DIR/mirrors/default"
-        chmod -R 777 "$DATA_DIR/mirrors/default" 2>/dev/null || true
-    fi
-    
-    # Fix permissions for container user
+    print_status "Ensuring data directories exist..."
+
+    mkdir -p \
+        "$DATA_DIR/configs" \
+        "$DATA_DIR/operations" \
+        "$DATA_DIR/logs" \
+        "$DATA_DIR/cache" \
+        "$DATA_DIR/mirrors/default" \
+        "$DATA_DIR/mirrors/custom"
+
+    print_success "Data directories are ready"
     fix_permissions
 }
 
@@ -205,20 +183,21 @@ run_container() {
     print_status "Starting container: $CONTAINER_NAME"
     print_status "Image: $image_tag"
     print_status "Web UI: http://localhost:$WEB_PORT"
-    print_status "API: http://localhost:$API_PORT"
+    print_status "API: http://localhost:$WEB_PORT/api"
     
     $CONTAINER_ENGINE run -d \
-        --name $CONTAINER_NAME \
-        -p $WEB_PORT:3001 \
+        --name "$CONTAINER_NAME" \
+        -p "$WEB_PORT:$CONTAINER_PORT" \
         -v "$(pwd)/$DATA_DIR:/app/data:z" \
         -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
         -e NODE_ENV=production \
-        -e PORT=3001 \
+        -e PORT="$CONTAINER_PORT" \
         -e STORAGE_DIR=/app/data \
         -e OC_MIRROR_CACHE_DIR=/app/data/cache \
-        -e LOG_LEVEL=info \
+        -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
+        -e OC_MIRROR_AUTHFILE=/app/pull-secret.json \
         --restart unless-stopped \
-        $image_tag
+        "$image_tag"
     
     if [ $? -eq 0 ]; then
         print_success "Container started successfully"
@@ -230,6 +209,12 @@ run_container() {
 
 # Show status
 show_status() {
+    if ! is_container_running; then
+        print_warning "Application is not running"
+        print_status "Start it with: ./start-app.sh --start"
+        return 0
+    fi
+
     echo ""
     echo "=========================================="
     echo "  OC Mirror v2 Web Application"
@@ -259,6 +244,11 @@ show_status() {
 
 # Show logs
 show_logs() {
+    if ! container_exists; then
+        print_warning "Container '$CONTAINER_NAME' does not exist"
+        return 0
+    fi
+
     print_status "Container logs:"
     $CONTAINER_ENGINE logs -f $CONTAINER_NAME
 }
@@ -284,6 +274,7 @@ main() {
             echo ""
             detect_architecture
             check_container_runtime
+            check_pull_secret
             
             if is_container_running; then
                 print_warning "Container is already running. Stopping it first..."
@@ -313,6 +304,7 @@ main() {
             echo ""
             detect_architecture
             check_container_runtime
+            check_pull_secret
             stop_container
             sleep 2
             create_data_directories

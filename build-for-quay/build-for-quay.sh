@@ -5,9 +5,30 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PACKAGE_JSON="${PROJECT_DIR}/package.json"
+
+read_package_version() {
+    if [ ! -f "${PACKAGE_JSON}" ]; then
+        echo "4.1"
+        return 0
+    fi
+
+    local package_version
+    package_version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "${PACKAGE_JSON}" | sed -n '1p')"
+
+    if [ -n "${package_version}" ]; then
+        echo "${package_version}"
+    else
+        echo "4.1"
+    fi
+}
+
 # Configuration
 IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
-VERSION="4.0"  # Semantic versioning
+LOCAL_IMAGE_NAME="localhost/oc-mirror-web-app"
+VERSION="${BUILD_VERSION:-$(read_package_version)}"
 TAG="${VERSION}"
 
 # Colors for output
@@ -85,7 +106,7 @@ build_image() {
     print_status "Building image using container-run.sh..."
     
     # Build the image using the existing container-run.sh script
-    ./container-run.sh --build-only
+    "${PROJECT_DIR}/container-run.sh" --build-only --version "${VERSION}"
     
     if [ $? -eq 0 ]; then
         print_success "Image built successfully"
@@ -97,20 +118,19 @@ build_image() {
 
 # Tag and push image
 tag_and_push() {
-    local local_tag="oc-mirror-web-app"
     local quay_tag="${IMAGE_NAME}:${TAG}-${ARCH}"
     local latest_tag="${IMAGE_NAME}:latest-${ARCH}"
     
     print_status "Tagging image for Quay.io..."
-    print_status "Local tag: $local_tag"
+    print_status "Local tag: $LOCAL_IMAGE_NAME"
     print_status "Quay tag: $quay_tag"
     print_status "Latest tag: $latest_tag"
     
     # Tag with version
-    $CONTAINER_ENGINE tag $local_tag $quay_tag
+    $CONTAINER_ENGINE tag "$LOCAL_IMAGE_NAME" "$quay_tag"
     
     # Tag as latest
-    $CONTAINER_ENGINE tag $local_tag $latest_tag
+    $CONTAINER_ENGINE tag "$LOCAL_IMAGE_NAME" "$latest_tag"
     
     print_status "Pushing versioned image to Quay.io..."
     $CONTAINER_ENGINE push $quay_tag
@@ -136,13 +156,19 @@ tag_and_push() {
 # Clean up local images
 cleanup_local_images() {
     print_status "Cleaning up local images..."
-    
-    local local_tag="oc-mirror-web-app"
-    
-    if $CONTAINER_ENGINE image exists $local_tag; then
-        $CONTAINER_ENGINE rmi $local_tag
-        print_success "Local image removed: $local_tag"
-    fi
+
+    local image_refs=(
+        "${IMAGE_NAME}:latest-${ARCH}"
+        "${IMAGE_NAME}:${TAG}-${ARCH}"
+        "${LOCAL_IMAGE_NAME}"
+    )
+
+    for image_ref in "${image_refs[@]}"; do
+        if $CONTAINER_ENGINE image exists "$image_ref"; then
+            $CONTAINER_ENGINE rmi "$image_ref" >/dev/null
+            print_success "Local image removed: $image_ref"
+        fi
+    done
 }
 
 # Display final information
@@ -174,8 +200,8 @@ show_usage() {
       echo
       echo "Examples:"
       echo "  $0                    # Build and push with default version"
-      echo "  $0 --tag v4.0         # Build and push with custom tag"
-      echo "  $0 --version 4.0      # Build and push with custom version"
+      echo "  $0 --tag v4.1         # Build and push with custom tag"
+      echo "  $0 --version 4.1      # Build and push with custom version"
       echo "  $0 --no-cleanup       # Build and push without cleanup"
 }
 
@@ -186,10 +212,18 @@ parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --tag)
+                if [ $# -lt 2 ]; then
+                    print_error "--tag requires a value"
+                    exit 1
+                fi
                 TAG="$2"
                 shift 2
                 ;;
             --version)
+                if [ $# -lt 2 ]; then
+                    print_error "--version requires a value"
+                    exit 1
+                fi
                 VERSION="$2"
                 TAG="$VERSION"
                 shift 2
@@ -213,8 +247,11 @@ parse_arguments() {
 
 # Main function
 main() {
+    cd "${PROJECT_DIR}"
+
     print_status "Starting build and push for Quay.io"
     print_status "Image: $IMAGE_NAME"
+    print_status "Local image: $LOCAL_IMAGE_NAME"
     print_status "Version: $VERSION"
     print_status "Tag: $TAG"
     

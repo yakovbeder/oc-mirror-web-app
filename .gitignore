@@ -86,6 +86,8 @@ data/mirrors/*
 # Temporary files
 tmp/
 temp/
+__pycache__/
+*.pyc
 
 # Pre-fetched operator catalog data (large files, generated during build)
 catalog-data/*

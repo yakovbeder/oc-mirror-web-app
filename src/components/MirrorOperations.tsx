@@ -381,10 +381,18 @@ const MirrorOperations: React.FC = () => {
     setShowLogs(false);
   };
 
+  const getMirrorFullPath = (mirrorDestination: string) => {
+    if (mirrorDestination.startsWith('/app/data')) {
+      const hostPath = mirrorDestination.replace('/app/data', 'data');
+      const projectRoot = '/home/ybeder/oc-mirror-web-app';
+      return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+    }
+
+    return mirrorDestination;
+  };
+
   const copyMirrorPath = async (mirrorDestination: string) => {
-    const hostPath = mirrorDestination.replace('/app/data', 'data');
-    const projectRoot = '/home/ybeder/oc-mirror-web-app';
-    const fullPath = `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+    const fullPath = getMirrorFullPath(mirrorDestination);
 
     try {
       await navigator.clipboard.writeText(fullPath);
@@ -404,12 +412,6 @@ const MirrorOperations: React.FC = () => {
       }
       document.body.removeChild(textArea);
     }
-  };
-
-  const getMirrorFullPath = (mirrorDestination: string) => {
-    const hostPath = mirrorDestination.replace('/app/data', 'data');
-    const projectRoot = '/home/ybeder/oc-mirror-web-app';
-    return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
   };
 
   const isDeleteConfig = deleteFilename && !deleteOperationId;
@@ -475,18 +477,47 @@ const MirrorOperations: React.FC = () => {
             <FlexItem>
               <FormGroup
                 label={
-                  <Flex spaceItems={{ default: 'spaceItemsSm' }} alignItems={{ default: 'alignItemsCenter' }}>
-                    <FlexItem><FolderIcon /> Mirror Destination Subdirectory</FlexItem>
-                    <FlexItem>
-                      <Popover
-                        bodyContent="Mirror files are saved to data/mirrors/<subdirectory>. Leave empty for &quot;default&quot;. The subdirectory is created automatically with correct permissions."
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.125rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.375rem',
+                      }}
+                    >
+                      <FolderIcon />
+                      <span>Mirror Destination Subdirectory</span>
+                    </span>
+                    <Popover
+                      bodyContent="Mirror files are saved to data/mirrors/<subdirectory>. Leave empty for &quot;default&quot;. The subdirectory is created automatically with correct permissions."
+                    >
+                      <Button
+                        variant="plain"
+                        aria-label="More info"
+                        hasNoPadding
+                        type="button"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: 'auto',
+                          height: '1.25rem',
+                          lineHeight: 1,
+                          position: 'relative',
+                          top: '1px',
+                          color: 'var(--pf-t--global--text--color--regular, #151515)',
+                        }}
                       >
-                        <Button variant="plain" aria-label="More info" style={{ padding: 0 }}>
-                          <InfoCircleIcon />
-                        </Button>
-                      </Popover>
-                    </FlexItem>
-                  </Flex>
+                        <InfoCircleIcon style={{ fontSize: '0.875rem' }} />
+                      </Button>
+                    </Popover>
+                  </span>
                 }
                 fieldId="mirror-subdir"
               >
@@ -525,7 +556,7 @@ const MirrorOperations: React.FC = () => {
                       variant="danger"
                       icon={<StopIcon />}
                       onClick={() => stopOperation(runningOperation.id)}
-                      isSmall
+                      size="sm"
                     >
                       Stop Operation
                     </Button>
@@ -597,7 +628,7 @@ const MirrorOperations: React.FC = () => {
                       <Flex spaceItems={{ default: 'spaceItemsSm' }}>
                         {op.status === 'running' && (
                           <FlexItem>
-                            <Button variant="danger" icon={<StopIcon />} isSmall onClick={() => stopOperation(op.id)}>
+                            <Button variant="danger" icon={<StopIcon />} size="sm" onClick={() => stopOperation(op.id)}>
                               Stop
                             </Button>
                           </FlexItem>
@@ -607,7 +638,7 @@ const MirrorOperations: React.FC = () => {
                             <Button
                               variant="secondary"
                               icon={<FolderIcon />}
-                              isSmall
+                              size="sm"
                               onClick={() =>
                                 setShowMirrorLocation(prev => ({
                                   ...prev,
@@ -623,7 +654,7 @@ const MirrorOperations: React.FC = () => {
                           <Button
                             variant="secondary"
                             icon={<ListIcon />}
-                            isSmall
+                            size="sm"
                             onClick={() => {
                               setSelectedConfig(op.configFile);
                               fetchLogs(op.id);
@@ -634,7 +665,7 @@ const MirrorOperations: React.FC = () => {
                           </Button>
                         </FlexItem>
                         <FlexItem>
-                          <Button variant="danger" icon={<TrashAltIcon />} isSmall onClick={() => promptDeleteOperation(op.id)}>
+                          <Button variant="danger" icon={<TrashAltIcon />} size="sm" onClick={() => promptDeleteOperation(op.id)}>
                             Delete
                           </Button>
                         </FlexItem>
