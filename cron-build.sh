@@ -7,9 +7,28 @@ set -e
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGE_JSON="${SCRIPT_DIR}/package.json"
 LOG_DIR="${SCRIPT_DIR}/logs/cron"
 LOG_FILE="${LOG_DIR}/build-$(date +%Y%m%d-%H%M%S).log"
-VERSION="${BUILD_VERSION:-4.0}"
+FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-true}"
+
+read_project_version() {
+    if [ ! -f "${PACKAGE_JSON}" ]; then
+        echo "4.1"
+        return 0
+    fi
+
+    local package_version
+    package_version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "${PACKAGE_JSON}" | sed -n '1p')"
+
+    if [ -n "${package_version}" ]; then
+        echo "${package_version}"
+    else
+        echo "4.1"
+    fi
+}
+
+VERSION="${BUILD_VERSION:-$(read_project_version)}"
 
 # Create log directory if it doesn't exist
 mkdir -p "${LOG_DIR}"
@@ -21,6 +40,8 @@ log() {
 
 # Main execution
 main() {
+    local fetch_args=()
+
     log "=========================================="
     log "Starting daily build process"
     log "Version: ${VERSION}"
@@ -30,8 +51,14 @@ main() {
     cd "${SCRIPT_DIR}"
     
     # Step 1: Fetch catalogs
-    log "Step 1: Fetching operator catalogs..."
-    if ./container-run.sh --fetch-catalogs >> "${LOG_FILE}" 2>&1; then
+    if [ "${FORCE_CATALOG_REFRESH}" = "true" ]; then
+        fetch_args+=(--force)
+        log "Step 1: Fetching operator catalogs with forced refresh..."
+    else
+        log "Step 1: Fetching operator catalogs..."
+    fi
+
+    if ./fetch-catalogs-host.sh "${fetch_args[@]}" >> "${LOG_FILE}" 2>&1; then
         log "✓ Catalog fetch completed successfully"
     else
         log "✗ Catalog fetch failed!"

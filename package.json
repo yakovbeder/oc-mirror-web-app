@@ -1,6 +1,6 @@
 {
   "name": "oc-mirror-web-app",
-  "version": "4.0",
+  "version": "4.1",
   "description": "Web application for OpenShift Container Platform mirroring operations using oc-mirror v2",
   "license": "Apache-2.0",
   "repository": {

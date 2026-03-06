@@ -10,9 +10,12 @@ set -e
 # - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
 # - FETCH_CATALOGS=true -> refresh catalog-data before building
 # - FORCE_CATALOG_REFRESH=true -> pass --force to fetch-catalogs-host.sh
+# - IMAGE_VERSION=4.1 -> set OCI image version label during build
+# - BUILD_VERSION=4.1 -> compatibility alias for IMAGE_VERSION
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
 FETCH_CATALOGS="${FETCH_CATALOGS:-false}"
 FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-false}"
+IMAGE_VERSION="${IMAGE_VERSION:-${BUILD_VERSION:-}}"
 
 # Image name (use localhost/ prefix to prevent Podman from searching registries)
 IMAGE_NAME="localhost/oc-mirror-web-app"
@@ -190,15 +193,35 @@ create_directories() {
 # Build the container image
 build_image() {
     print_status "Building container image with $CONTAINER_ENGINE..."
-    
-    local build_cmd="$CONTAINER_ENGINE build"
-    
+
+    local build_cmd=("$CONTAINER_ENGINE" "build")
+    local build_date
+    local vcs_ref=""
+
     if [ "$BUILD_NO_CACHE" = "true" ]; then
         print_status "Build cache disabled (BUILD_NO_CACHE=true)"
-        build_cmd="$build_cmd --no-cache"
+        build_cmd+=(--no-cache)
     fi
-    
-    if $build_cmd -t "$IMAGE_NAME" .; then
+
+    build_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    build_cmd+=(--build-arg "BUILD_DATE=${build_date}")
+
+    if command -v git >/dev/null 2>&1; then
+        vcs_ref="$(git rev-parse --short HEAD 2>/dev/null || true)"
+    fi
+
+    if [ -n "$vcs_ref" ]; then
+        build_cmd+=(--build-arg "VCS_REF=${vcs_ref}")
+    fi
+
+    if [ -n "$IMAGE_VERSION" ]; then
+        print_status "Setting image version label to: $IMAGE_VERSION"
+        build_cmd+=(--build-arg "VERSION=${IMAGE_VERSION}")
+    fi
+
+    build_cmd+=(-t "$IMAGE_NAME" .)
+
+    if "${build_cmd[@]}"; then
         print_success "Container image built successfully"
     else
         print_error "Failed to build container image"
@@ -299,17 +322,21 @@ show_help() {
     echo "  --fetch-catalogs    Fetch operator catalogs during build"
     echo "  --force-catalogs    Force host catalog refetch and ignore freshness"
     echo "  --no-cache          Rebuild the container image without using cache"
+    echo "  --version VERSION   Set OCI image version label during build"
     echo ""
     echo "Environment Variables:"
     echo "  FETCH_CATALOGS=true         Fetch operator catalogs during build"
     echo "  FORCE_CATALOG_REFRESH=true Force host catalog refetch during build"
     echo "  BUILD_NO_CACHE=true        Disable build cache when building the container image"
+    echo "  IMAGE_VERSION=4.1          Set OCI image version label during build"
+    echo "  BUILD_VERSION=4.1          Compatibility alias for IMAGE_VERSION"
     echo ""
     echo "Examples:"
     echo "  $0"
     echo "  $0 --build-only"
     echo "  $0 --fetch-catalogs"
     echo "  $0 --fetch-catalogs --force-catalogs"
+    echo "  $0 --build-only --version 4.1"
     echo "  $0 --build-only --fetch-catalogs --force-catalogs --no-cache"
     echo ""
     echo "Container Engine Support:"
@@ -401,6 +428,15 @@ parse_arguments() {
             --no-cache)
                 BUILD_NO_CACHE=true
                 shift
+                ;;
+            --version)
+                if [ $# -lt 2 ]; then
+                    print_error "--version requires a value"
+                    echo "Use --help for usage information"
+                    exit 1
+                fi
+                IMAGE_VERSION="$2"
+                shift 2
                 ;;
             *)
                 print_error "Unknown option: $1"

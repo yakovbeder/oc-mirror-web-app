@@ -2072,19 +2072,22 @@ const MirrorConfig: React.FC = () => {
                         }
                         fieldId="archive-size"
                       >
-                        <TextInput
-                          id="archive-size"
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          value={config.archiveSize}
-                          onChange={(_e, val) =>
-                            setConfig(prev => ({
-                              ...prev,
-                              archiveSize: sanitizeArchiveSizeInput(val),
-                            }))
-                          }
-                        />
+                        <div style={{ width: '7rem' }}>
+                          <TextInput
+                            id="archive-size"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={config.archiveSize}
+                            onChange={(_e, val) =>
+                              setConfig(prev => ({
+                                ...prev,
+                                archiveSize: sanitizeArchiveSizeInput(val),
+                              }))
+                            }
+                            style={{ width: '100%' }}
+                          />
+                        </div>
                       </FormGroup>
                     </GridItem>
                   </Grid>

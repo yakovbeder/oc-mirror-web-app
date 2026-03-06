@@ -28,6 +28,7 @@ chmod +x start-app.sh
 ```
 
 The script auto-detects your architecture (AMD64/ARM64), pulls the image from Quay.io, and starts the app.
+It validates `pull-secret/pull-secret.json` before launching the container.
 
 Open **http://localhost:3000** in your browser.
 
@@ -56,7 +57,7 @@ chmod +x fetch-catalogs-host.sh
 ./fetch-catalogs-host.sh
 ```
 
-This fetches real catalog data from Red Hat, Certified, and Community operator indexes directly on the host using Podman. Catalogs are cached locally and reused unless older than 7 days. After fetching, rebuild the container with `./container-run.sh` to include the updated data.
+This fetches real catalog data from Red Hat, Certified, and Community operator indexes directly on the host using Podman. Catalogs are cached locally and reused unless they are older than 24 hours. Use `./fetch-catalogs-host.sh --force` to ignore the freshness window and force a full refetch. After fetching, rebuild the container with `./container-run.sh` to include the updated data.
 
 ---
 
