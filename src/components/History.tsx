@@ -3,7 +3,6 @@ import axios from 'axios';
 import {
   Card,
   CardBody,
-  CardTitle,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
@@ -119,7 +118,7 @@ const History: React.FC = () => {
         const es = new EventSource(`/api/operations/${selectedOperation.id}/logstream`);
         es.onmessage = (e) => {
           if (!isPaused) {
-            setLiveLog((prev) => prev + (e.data ? e.data + '\n' : ''));
+            setLiveLog((prev) => `${prev}${e.data ? `${e.data}\n` : ''}`);
           }
         };
         es.onerror = () => {
@@ -444,7 +443,7 @@ const History: React.FC = () => {
                             variant={autoScroll ? 'primary' : 'secondary'}
                             icon={autoScroll ? <LockIcon /> : <LockOpenIcon />}
                             onClick={() => setAutoScroll(!autoScroll)}
-                            isSmall
+                            size="sm"
                           >
                             Auto-scroll
                           </Button>
@@ -454,7 +453,7 @@ const History: React.FC = () => {
                             variant={isPaused ? 'warning' : 'secondary'}
                             icon={isPaused ? <PlayIcon /> : <PauseIcon />}
                             onClick={() => setIsPaused(!isPaused)}
-                            isSmall
+                            size="sm"
                           >
                             {isPaused ? 'Resume' : 'Pause'}
                           </Button>
@@ -464,7 +463,7 @@ const History: React.FC = () => {
                             variant="secondary"
                             icon={<TrashAltIcon />}
                             onClick={clearLog}
-                            isSmall
+                            size="sm"
                           >
                             Clear
                           </Button>

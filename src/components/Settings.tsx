@@ -14,10 +14,6 @@ import {
   Switch,
   Button,
   ActionGroup,
-  DescriptionList,
-  DescriptionListGroup,
-  DescriptionListTerm,
-  DescriptionListDescription,
   Grid,
   GridItem,
   Spinner,
@@ -26,6 +22,9 @@ import {
   HelperTextItem,
   Alert,
   Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   ModalVariant,
 } from '@patternfly/react-core';
 import {
@@ -277,8 +276,7 @@ const SettingsPage: React.FC = () => {
                 >
                   <Switch
                     id="auto-cleanup"
-                    label="Enabled"
-                    labelOff="Disabled"
+                    label={settings.autoCleanup ? 'Enabled' : 'Disabled'}
                     isChecked={settings.autoCleanup}
                     onChange={(_event, checked) => updateSetting('autoCleanup', checked)}
                   />
@@ -348,8 +346,7 @@ const SettingsPage: React.FC = () => {
                 <FormGroup label="Enable Proxy" fieldId="proxy-enabled">
                   <Switch
                     id="proxy-enabled"
-                    label="Enabled"
-                    labelOff="Disabled"
+                    label={settings.proxySettings.enabled ? 'Enabled' : 'Disabled'}
                     isChecked={settings.proxySettings.enabled}
                     onChange={(_event, checked) => updateSetting('proxySettings.enabled', checked)}
                   />
@@ -510,21 +507,24 @@ const SettingsPage: React.FC = () => {
 
       <Modal
         variant={ModalVariant.small}
-        title="Reset Settings"
         isOpen={showResetModal}
         onClose={() => setShowResetModal(false)}
-        actions={[
+        aria-labelledby="reset-settings-title"
+      >
+        <ModalHeader labelId="reset-settings-title" title="Reset Settings" />
+        <ModalBody>
+          Are you sure you want to reset all settings to default values?
+          <br /><br />
+          <Alert variant="warning" isInline isPlain title="This will discard any unsaved changes." />
+        </ModalBody>
+        <ModalFooter>
           <Button key="confirm" variant="danger" onClick={resetSettings}>
             Reset
-          </Button>,
+          </Button>
           <Button key="cancel" variant="link" onClick={() => setShowResetModal(false)}>
             Cancel
-          </Button>,
-        ]}
-      >
-        Are you sure you want to reset all settings to default values?
-        <br /><br />
-        <Alert variant="warning" isInline isPlain title="This will discard any unsaved changes." />
+          </Button>
+        </ModalFooter>
       </Modal>
     </div>
   );
