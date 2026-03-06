@@ -18,6 +18,7 @@ import {
   Flex,
   FlexItem,
   FormGroup,
+  FormGroupLabelHelp,
   FormSelect,
   FormSelectOption,
   Grid,
@@ -157,6 +158,8 @@ interface CleanConfig {
   };
 }
 
+type VersionField = 'minVersion' | 'maxVersion';
+
 const OCP_VERSIONS = ['4.16', '4.17', '4.18', '4.19', '4.20'];
 
 const FALLBACK_CATALOGS: CatalogInfo[] = [
@@ -216,6 +219,166 @@ const validateVersionRange = (
   }
 
   return { isValid: true, message: '' };
+};
+
+const getMajorMinor = (version: string): string => {
+  const parts = version.split('.');
+  return `${parts[0]}.${parts[1]}`;
+};
+
+const getChannelVersionLine = (channelName: string): string | undefined => {
+  const match = channelName.match(/(\d+\.\d+)/);
+  return match ? match[1] : undefined;
+};
+
+const getPlatformChannelValidationMessage = (channel: PlatformChannel): string => {
+  const channelLine = getChannelVersionLine(channel.name);
+
+  if (channel.minVersion) {
+    if (!isValidVersion(channel.minVersion)) {
+      return 'Min version must be a valid version like 4.16.0';
+    }
+    if (channelLine && getMajorMinor(channel.minVersion) !== channelLine) {
+      return `Min version must match channel ${channelLine}.x (e.g., ${channelLine}.0)`;
+    }
+  }
+
+  if (channel.maxVersion) {
+    if (!isValidVersion(channel.maxVersion)) {
+      return 'Max version must be a valid version like 4.16.0';
+    }
+    if (channelLine && getMajorMinor(channel.maxVersion) !== channelLine) {
+      return `Max version must match channel ${channelLine}.x (e.g., ${channelLine}.0)`;
+    }
+  }
+
+  if (channel.minVersion && channel.maxVersion) {
+    const validation = validateVersionRange(channel.minVersion, channel.maxVersion, []);
+    if (!validation.isValid) {
+      return validation.message;
+    }
+  }
+
+  return '';
+};
+
+const getOperatorChannelValidationMessage = (
+  channel: OperatorChannel,
+  versions: string[],
+): string => {
+  if (channel.minVersion && !isValidVersion(channel.minVersion)) {
+    return 'Min version must be a valid version';
+  }
+
+  if (channel.maxVersion && !isValidVersion(channel.maxVersion)) {
+    return 'Max version must be a valid version';
+  }
+
+  if (channel.minVersion && channel.maxVersion) {
+    const validation = validateVersionRange(channel.minVersion, channel.maxVersion, versions);
+    if (!validation.isValid) {
+      return validation.message;
+    }
+  }
+
+  return '';
+};
+
+const getSelectableVersions = (
+  versions: string[],
+  field: VersionField,
+  channel: OperatorChannel,
+): string[] => {
+  const minNum =
+    channel.minVersion && isValidVersion(channel.minVersion)
+      ? versionToNumber(channel.minVersion)
+      : undefined;
+  const maxNum =
+    channel.maxVersion && isValidVersion(channel.maxVersion)
+      ? versionToNumber(channel.maxVersion)
+      : undefined;
+
+  return versions.filter(version => {
+    const versionNum = versionToNumber(version);
+
+    if (field === 'minVersion' && maxNum !== undefined) {
+      return versionNum <= maxNum;
+    }
+
+    if (field === 'maxVersion' && minNum !== undefined) {
+      return versionNum >= minNum;
+    }
+
+    return true;
+  });
+};
+
+const clearMismatchedPlatformVersions = (channel: PlatformChannel): PlatformChannel => {
+  const channelLine = getChannelVersionLine(channel.name);
+  if (!channelLine) return channel;
+
+  return {
+    ...channel,
+    minVersion:
+      channel.minVersion &&
+      isValidVersion(channel.minVersion) &&
+      getMajorMinor(channel.minVersion) !== channelLine
+        ? ''
+        : channel.minVersion,
+    maxVersion:
+      channel.maxVersion &&
+      isValidVersion(channel.maxVersion) &&
+      getMajorMinor(channel.maxVersion) !== channelLine
+        ? ''
+        : channel.maxVersion,
+  };
+};
+
+const sanitizePlatformChannelValue = (
+  channel: PlatformChannel,
+  field: VersionField,
+): { channel: PlatformChannel; message: string } => {
+  const value = channel[field];
+  if (!value) {
+    return { channel, message: '' };
+  }
+
+  const channelLine = getChannelVersionLine(channel.name);
+  const label = field === 'minVersion' ? 'Min version' : 'Max version';
+
+  if (!isValidVersion(value)) {
+    return {
+      channel: { ...channel, [field]: '' },
+      message: `${label} must be a valid version like ${channelLine ? `${channelLine}.0` : '4.16.0'}`,
+    };
+  }
+
+  if (channelLine && getMajorMinor(value) !== channelLine) {
+    return {
+      channel: { ...channel, [field]: '' },
+      message: `${label} must match channel ${channelLine}.x (e.g., ${channelLine}.0)`,
+    };
+  }
+
+  const otherField: VersionField = field === 'minVersion' ? 'maxVersion' : 'minVersion';
+  const otherValue = channel[otherField];
+
+  if (otherValue && isValidVersion(otherValue)) {
+    const validation = validateVersionRange(
+      field === 'minVersion' ? value : otherValue,
+      field === 'maxVersion' ? value : otherValue,
+      [],
+    );
+
+    if (!validation.isValid) {
+      return {
+        channel: { ...channel, [field]: '' },
+        message: validation.message,
+      };
+    }
+  }
+
+  return { channel, message: '' };
 };
 
 const generateDefaultConfigName = (): string => {
@@ -373,6 +536,15 @@ const MirrorConfig: React.FC = () => {
     return versions;
   };
 
+  const getStoredChannelVersions = (
+    catalogUrl: string,
+    packageName: string,
+    channelName: string,
+  ): string[] => {
+    if (!catalogUrl || !packageName || !channelName) return [];
+    return availableVersions[`${packageName}:${channelName}:${catalogUrl}`] || [];
+  };
+
   const getChannelVersions = (
     operatorIndex: number,
     packageIndex: number,
@@ -383,7 +555,7 @@ const MirrorConfig: React.FC = () => {
     if (!operator || !packageName || !channelName) return [];
 
     const key = `${packageName}:${channelName}:${operator.catalog}`;
-    const versions = availableVersions[key] || [];
+    const versions = getStoredChannelVersions(operator.catalog, packageName, channelName);
 
     if (versions.length === 0) {
       fetchChannelVersions(packageName, channelName, operator.catalog)
@@ -432,6 +604,35 @@ const MirrorConfig: React.FC = () => {
   };
 
   const updatePlatformChannel = (index: number, field: string, value: string | boolean) => {
+    if (field === 'name' && typeof value === 'string') {
+      const currentChannel = config.mirror.platform.channels[index];
+      const updatedChannel = clearMismatchedPlatformVersions({
+        ...currentChannel,
+        name: value,
+      });
+
+      const clearedMin = Boolean(currentChannel?.minVersion && !updatedChannel.minVersion);
+      const clearedMax = Boolean(currentChannel?.maxVersion && !updatedChannel.maxVersion);
+
+      setConfig(prev => ({
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          platform: {
+            ...prev.mirror.platform,
+            channels: prev.mirror.platform.channels.map((ch, i) =>
+              i === index ? updatedChannel : ch,
+            ),
+          },
+        },
+      }));
+
+      if (clearedMin || clearedMax) {
+        addInfoAlert('Platform Channel: Cleared versions that do not match the selected channel');
+      }
+      return;
+    }
+
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -446,43 +647,28 @@ const MirrorConfig: React.FC = () => {
     }));
   };
 
-  const validatePlatformChannel = (index: number) => {
+  const validatePlatformChannel = (index: number, field: VersionField) => {
     const channel = config.mirror.platform.channels[index];
-    if (!channel.minVersion || !channel.maxVersion) return;
+    if (!channel) return;
 
-    if (isValidVersion(channel.minVersion) && isValidVersion(channel.maxVersion)) {
-      const channelMatch = channel.name.match(/(\d+\.\d+)/);
-      if (channelMatch) {
-        const channelVer = channelMatch[1];
-        const getMajorMinor = (v: string) => {
-          const p = v.split('.');
-          return `${p[0]}.${p[1]}`;
-        };
-        if (
-          getMajorMinor(channel.minVersion) !== channelVer ||
-          getMajorMinor(channel.maxVersion) !== channelVer
-        ) {
-          addWarningAlert(
-            `Platform Channel Warning: Versions must match channel ${channelVer}.x (e.g., ${channelVer}.0)`,
-          );
-          return;
-        }
-      }
+    const result = sanitizePlatformChannelValue(channel, field);
+    if (result.channel !== channel) {
+      setConfig(prev => ({
+        ...prev,
+        mirror: {
+          ...prev.mirror,
+          platform: {
+            ...prev.mirror.platform,
+            channels: prev.mirror.platform.channels.map((ch, i) =>
+              i === index ? result.channel : ch,
+            ),
+          },
+        },
+      }));
+    }
 
-      const minNum = versionToNumber(channel.minVersion);
-      const maxNum = versionToNumber(channel.maxVersion);
-
-      if (minNum > maxNum) {
-        setConfig(prev => {
-          const updated = { ...prev };
-          const ch = { ...channel, maxVersion: channel.minVersion, minVersion: channel.maxVersion };
-          updated.mirror.platform.channels = prev.mirror.platform.channels.map((c, i) =>
-            i === index ? ch : c,
-          );
-          addInfoAlert('Platform Channel: Auto-corrected invalid version range');
-          return updated;
-        });
-      }
+    if (result.message) {
+      addDangerAlert(`Platform Channel: ${result.message}`);
     }
   };
 
@@ -678,7 +864,9 @@ const MirrorConfig: React.FC = () => {
                     ? {
                         ...pkg,
                         channels: pkg.channels.map((ch, cIdx) =>
-                          cIdx === channelIndex ? { ...ch, name: value } : ch,
+                          cIdx === channelIndex
+                            ? { ...ch, name: value, minVersion: '', maxVersion: '' }
+                            : ch,
                         ),
                       }
                     : pkg,
@@ -704,9 +892,23 @@ const MirrorConfig: React.FC = () => {
     operatorIndex: number,
     packageIndex: number,
     channelIndex: number,
-    field: string,
+    field: VersionField,
     value: string,
   ) => {
+    const operator = config.mirror.operators[operatorIndex];
+    const pkg = operator?.packages[packageIndex];
+    const channel = pkg?.channels[channelIndex];
+    if (!operator || !pkg || !channel) return;
+
+    const nextChannel = { ...channel, [field]: value };
+    const versions = getStoredChannelVersions(operator.catalog, pkg.name, nextChannel.name);
+    const validationMessage = getOperatorChannelValidationMessage(nextChannel, versions);
+
+    if (validationMessage) {
+      addDangerAlert(`Operator Channel: ${validationMessage}`);
+      return;
+    }
+
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -720,7 +922,7 @@ const MirrorConfig: React.FC = () => {
                     ? {
                         ...pkg,
                         channels: pkg.channels.map((ch, cIdx) =>
-                          cIdx === channelIndex ? { ...ch, [field]: value } : ch,
+                          cIdx === channelIndex ? nextChannel : ch,
                         ),
                       }
                     : pkg,
@@ -730,45 +932,6 @@ const MirrorConfig: React.FC = () => {
         ),
       },
     }));
-
-    setTimeout(() => {
-      validateOperatorChannel(operatorIndex, packageIndex, channelIndex);
-    }, 0);
-  };
-
-  const validateOperatorChannel = (
-    operatorIndex: number,
-    packageIndex: number,
-    channelIndex: number,
-  ) => {
-    const operator = config.mirror.operators[operatorIndex];
-    const pkg = operator?.packages[packageIndex];
-    const channel = pkg?.channels[channelIndex];
-    if (!channel?.minVersion || !channel?.maxVersion) return;
-
-    if (isValidVersion(channel.minVersion) && isValidVersion(channel.maxVersion)) {
-      const versions = getChannelVersions(operatorIndex, packageIndex, channel.name);
-      const validation = validateVersionRange(channel.minVersion, channel.maxVersion, versions);
-
-      if (!validation.isValid) {
-        if (validation.message.includes('Min version cannot be greater than max version')) {
-          setConfig(prev => {
-            const newConfig = { ...prev };
-            const corrected = {
-              ...channel,
-              maxVersion: channel.minVersion,
-              minVersion: channel.maxVersion,
-            };
-            newConfig.mirror.operators[operatorIndex].packages[packageIndex].channels[channelIndex] =
-              corrected;
-            addInfoAlert('Operator Channel: Auto-corrected invalid version range');
-            return { ...newConfig };
-          });
-        } else {
-          addWarningAlert(`Version Range Warning: ${validation.message}`);
-        }
-      }
-    }
   };
 
   const addChannelToPackage = (operatorIndex: number, packageIndex: number, channelName: string) => {
@@ -874,26 +1037,48 @@ const MirrorConfig: React.FC = () => {
     return clean;
   }, [config]);
 
-  const validateConfiguration = (): string[] => {
+  const validateConfiguration = (currentConfig: ImageSetConfig = config): string[] => {
     const errors: string[] = [];
-    const hasPlatform = config.mirror.platform.channels.length > 0;
-    const hasOps = config.mirror.operators.length > 0;
-    const hasImages = config.mirror.additionalImages.length > 0;
+    const hasPlatform = currentConfig.mirror.platform.channels.length > 0;
+    const hasOps = currentConfig.mirror.operators.length > 0;
+    const hasImages = currentConfig.mirror.additionalImages.length > 0;
 
     if (!hasPlatform && !hasOps && !hasImages) {
       errors.push('At least one platform channel, operator, or additional image is required');
     }
 
-    config.mirror.platform.channels.forEach((ch, i) => {
+    currentConfig.mirror.platform.channels.forEach((ch, i) => {
       if (!ch.name) errors.push(`Platform channel ${i + 1} must have a name`);
+      const validationMessage = getPlatformChannelValidationMessage(ch);
+      if (validationMessage) {
+        errors.push(`Platform channel ${i + 1} (${ch.name || 'unnamed'}): ${validationMessage}`);
+      }
     });
 
-    config.mirror.operators.forEach((op, oIdx) => {
+    currentConfig.mirror.operators.forEach((op, oIdx) => {
       if (!op.catalog) errors.push(`Operator ${oIdx + 1} must have a catalog`);
       if (!op.packages.length) errors.push(`Operator ${oIdx + 1} must have at least one package`);
       op.packages.forEach((pkg, pIdx) => {
         if (!pkg.name)
           errors.push(`Package ${pIdx + 1} in operator ${oIdx + 1} must have a name`);
+        pkg.channels.forEach((ch, chIdx) => {
+          if (!ch.name) {
+            errors.push(
+              `Channel ${chIdx + 1} in package ${pkg.name || pIdx + 1} of operator ${oIdx + 1} must have a name`,
+            );
+            return;
+          }
+
+          const validationMessage = getOperatorChannelValidationMessage(
+            ch,
+            getStoredChannelVersions(op.catalog, pkg.name, ch.name),
+          );
+          if (validationMessage) {
+            errors.push(
+              `Channel ${ch.name} in package ${pkg.name || pIdx + 1} of operator ${oIdx + 1}: ${validationMessage}`,
+            );
+          }
+        });
       });
     });
 
@@ -921,6 +1106,12 @@ const MirrorConfig: React.FC = () => {
   };
 
   const downloadConfiguration = () => {
+    const errors = validateConfiguration();
+    if (errors.length > 0) {
+      errors.forEach(e => addDangerAlert(e));
+      return;
+    }
+
     const yamlString = YAML.stringify(generateCleanConfig());
     const blob = new Blob([yamlString], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
@@ -1042,7 +1233,7 @@ const MirrorConfig: React.FC = () => {
     const archiveSize =
       parsedUpload.archiveSize != null ? String(parsedUpload.archiveSize) : '';
 
-    setConfig({
+    const nextConfig: ImageSetConfig = {
       kind: parsedUpload.kind || 'ImageSetConfiguration',
       apiVersion: parsedUpload.apiVersion || 'mirror.openshift.io/v2alpha1',
       archiveSize,
@@ -1055,7 +1246,15 @@ const MirrorConfig: React.FC = () => {
         additionalImages,
         helm: { repositories: [] },
       },
-    });
+    };
+
+    const errors = validateConfiguration(nextConfig);
+    if (errors.length > 0) {
+      errors.forEach(e => addDangerAlert(e));
+      return;
+    }
+
+    setConfig(nextConfig);
 
     setTimeout(async () => {
       for (const op of operators) {
@@ -1139,7 +1338,7 @@ const MirrorConfig: React.FC = () => {
       );
       const archiveSize = parsed.archiveSize != null ? String(parsed.archiveSize) : '';
 
-      setConfig({
+      const nextConfig: ImageSetConfig = {
         kind: parsed.kind,
         apiVersion: parsed.apiVersion,
         archiveSize,
@@ -1149,7 +1348,15 @@ const MirrorConfig: React.FC = () => {
           additionalImages,
           helm: { repositories: [] },
         },
-      });
+      };
+
+      const errors = validateConfiguration(nextConfig);
+      if (errors.length > 0) {
+        errors.forEach(e => addDangerAlert(e));
+        return;
+      }
+
+      setConfig(nextConfig);
 
       setIsEditingPreview(false);
       setEditedYaml('');
@@ -1241,7 +1448,7 @@ const MirrorConfig: React.FC = () => {
                             id={`platform-ch-min-${index}`}
                             value={channel.minVersion}
                             onChange={(_e, val) => updatePlatformChannel(index, 'minVersion', val)}
-                            onBlur={() => validatePlatformChannel(index)}
+                            onBlur={() => validatePlatformChannel(index, 'minVersion')}
                             placeholder="e.g., 4.16.0"
                           />
                         </FormGroup>
@@ -1255,7 +1462,7 @@ const MirrorConfig: React.FC = () => {
                             id={`platform-ch-max-${index}`}
                             value={channel.maxVersion}
                             onChange={(_e, val) => updatePlatformChannel(index, 'maxVersion', val)}
-                            onBlur={() => validatePlatformChannel(index)}
+                            onBlur={() => validatePlatformChannel(index, 'maxVersion')}
                             placeholder="e.g., 4.16.10"
                           />
                         </FormGroup>
@@ -1368,7 +1575,7 @@ const MirrorConfig: React.FC = () => {
                     <Title headingLevel="h5"><BundleIcon /> Operators</Title>
 
                     {operator.packages.map((pkg, pkgIndex) => (
-                      <Card key={pkgIndex} isCompact isFlat style={{ marginBottom: '1rem' }}>
+                      <Card key={pkgIndex} isCompact isPlain style={{ marginBottom: '1rem' }}>
                         <CardHeader
                           actions={{
                             actions: (
@@ -1376,7 +1583,7 @@ const MirrorConfig: React.FC = () => {
                                 variant="danger"
                                 icon={<TrashIcon />}
                                 onClick={() => removePackageFromOperator(opIndex, pkgIndex)}
-                                isSmall
+                                size="sm"
                               >
                                 Remove
                               </Button>
@@ -1450,7 +1657,7 @@ const MirrorConfig: React.FC = () => {
                                       onClick={() => {
                                         if (!isOpen) setOperatorSelectOpen(prev => ({ ...prev, [selectKey]: true }));
                                       }}
-                                      innerRef={(el: HTMLInputElement) => {
+                                      ref={(el: HTMLInputElement | null) => {
                                         operatorFilterInputRef.current[selectKey] = el;
                                       }}
                                       placeholder="Type to search operators..."
@@ -1500,7 +1707,7 @@ const MirrorConfig: React.FC = () => {
                             const info = dOps?.find(o => o.name === pkg.name);
                             if (!info) return null;
                             return (
-                              <Card isFlat isCompact style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                              <Card isPlain isCompact style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
                                 <CardBody>
                                   <Split hasGutter>
                                     <SplitItem>
@@ -1556,6 +1763,16 @@ const MirrorConfig: React.FC = () => {
                               const dOps = detailedOperators[operator.catalog];
                               const info = dOps?.find(o => o.name === pkg.name);
                               const versions = getChannelVersions(opIndex, pkgIndex, channel.name);
+                              const minVersionOptions = getSelectableVersions(
+                                versions,
+                                'minVersion',
+                                channel,
+                              );
+                              const maxVersionOptions = getSelectableVersions(
+                                versions,
+                                'maxVersion',
+                                channel,
+                              );
 
                               return (
                                 <Flex
@@ -1601,7 +1818,7 @@ const MirrorConfig: React.FC = () => {
                                         style={{ width: '160px' }}
                                       >
                                         <FormSelectOption value="" label="Select version..." />
-                                        {versions.map(v => (
+                                        {minVersionOptions.map(v => (
                                           <FormSelectOption key={v} value={v} label={v} />
                                         ))}
                                       </FormSelect>
@@ -1620,7 +1837,7 @@ const MirrorConfig: React.FC = () => {
                                         style={{ width: '160px' }}
                                       >
                                         <FormSelectOption value="" label="Select version..." />
-                                        {versions.map(v => (
+                                        {maxVersionOptions.map(v => (
                                           <FormSelectOption key={v} value={v} label={v} />
                                         ))}
                                       </FormSelect>
@@ -1633,7 +1850,7 @@ const MirrorConfig: React.FC = () => {
                                       onClick={() =>
                                         removeOperatorPackageChannel(opIndex, pkgIndex, chIdx)
                                       }
-                                      isSmall
+                                      size="sm"
                                     >
                                       Remove
                                     </Button>
@@ -1750,18 +1967,18 @@ const MirrorConfig: React.FC = () => {
                 </SplitItem>
               </Split>
 
-              <Card isFlat isCompact style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+              <Card isPlain isCompact style={{ marginTop: '1rem', marginBottom: '1rem' }}>
                 <CardBody>
                   <FormGroup
                     label="Archive Size (GiB)"
                     fieldId="archive-size"
-                    labelIcon={
+                    labelHelp={
                       <Popover
                         bodyContent="Maximum size (in GiB) for archive files when mirroring to disk. Leave empty to use default behavior."
                       >
-                        <Button variant="plain" aria-label="Archive size help">
+                        <FormGroupLabelHelp aria-label="Archive size help">
                           <OutlinedQuestionCircleIcon />
-                        </Button>
+                        </FormGroupLabelHelp>
                       </Popover>
                     }
                   >
@@ -1831,7 +2048,7 @@ const MirrorConfig: React.FC = () => {
                 modification.
               </p>
 
-              <Card isFlat isCompact style={{ marginTop: '1rem' }}>
+              <Card isPlain isCompact style={{ marginTop: '1rem' }}>
                 <CardBody>
                   <FormGroup label="Upload YAML File" fieldId="yaml-file-upload">
                     <FileUpload
