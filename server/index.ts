@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import tar from 'tar';
 import compression from 'compression';
 import multer from 'multer';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const fsp = fs.promises;
 
@@ -57,6 +57,10 @@ interface OperatorEntry {
   ocpVersion?: string;
   catalogUrl?: string;
   availableVersions?: string[];
+  channelVersions?: Record<string, string[]>;
+  channelVersionRanges?: Record<string, { minVersion?: string | null; maxVersion?: string | null }>;
+  minVersion?: string | null;
+  maxVersion?: string | null;
 }
 
 interface OperatorDependency {
@@ -97,6 +101,8 @@ interface RunningProcess {
 interface ChannelObject {
   name: string;
   availableVersions?: string[];
+  minVersion?: string | null;
+  maxVersion?: string | null;
 }
 
 const app = express();
@@ -115,11 +121,26 @@ const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
+const APP_ROOT_DIR = process.env.OC_MIRROR_WORKDIR || path.resolve(__dirname, '..');
+const MIRROR_BASE_DIR = path.resolve(process.env.OC_MIRROR_BASE_MIRROR_DIR || path.join(STORAGE_DIR, 'mirrors'));
+const DEFAULT_MIRROR_DIR = path.join(MIRROR_BASE_DIR, 'default');
+const CUSTOM_MIRROR_DIR = path.join(MIRROR_BASE_DIR, 'custom');
+const EPHEMERAL_MIRROR_DIR = path.resolve(process.env.OC_MIRROR_EPHEMERAL_DIR || path.join(APP_ROOT_DIR, 'mirror'));
+const AUTHFILE_PATH = process.env.OC_MIRROR_AUTHFILE || '/app/pull-secret.json';
 
 const runningProcesses = new Map<string, RunningProcess>();
 
 async function ensureDirectories(): Promise<void> {
-  const dirs = [STORAGE_DIR, CONFIGS_DIR, OPERATIONS_DIR, LOGS_DIR, CACHE_DIR];
+  const dirs = [
+    STORAGE_DIR,
+    CONFIGS_DIR,
+    OPERATIONS_DIR,
+    LOGS_DIR,
+    CACHE_DIR,
+    MIRROR_BASE_DIR,
+    DEFAULT_MIRROR_DIR,
+    CUSTOM_MIRROR_DIR,
+  ];
   for (const dir of dirs) {
     try {
       await fsp.mkdir(dir, { recursive: true });
@@ -129,14 +150,13 @@ async function ensureDirectories(): Promise<void> {
   }
 }
 
-// Note: With custom mirror destinations (default: /app/data/mirrors/default),
+// Note: With custom mirror destinations (default: DEFAULT_MIRROR_DIR),
 // mirror files persist across restarts, so we keep operation history
 async function clearOperationHistory(): Promise<void> {
-  const defaultMirrorPath = '/app/data/mirrors/default';
   let hasPersistedMirrors = false;
   
   try {
-    const files = await fsp.readdir(defaultMirrorPath);
+    const files = await fsp.readdir(DEFAULT_MIRROR_DIR);
     hasPersistedMirrors = files.length > 0;
   } catch {
     hasPersistedMirrors = false;
@@ -815,27 +835,27 @@ app.get('/api/system/paths', async (req: Request, res: Response) => {
   try {
     const commonPaths = [
       { 
-        path: '/app/data/mirrors/default', 
+        path: DEFAULT_MIRROR_DIR,
         label: 'Default (Persistent)', 
-        description: 'Recommended - survives container restarts, mounted volume',
+        description: 'Recommended - primary persistent mirror location',
         available: false
       },
       { 
-        path: '/app/data/mirrors', 
+        path: MIRROR_BASE_DIR,
         label: 'Data Mirrors Root', 
-        description: 'Persistent - mounted volume, create subdirectories as needed',
+        description: 'Persistent - create subdirectories as needed',
         available: false
       },
       { 
-        path: '/app/data/mirrors/custom', 
+        path: CUSTOM_MIRROR_DIR,
         label: 'Custom Directory', 
-        description: 'Persistent - create custom subdirectory for this operation',
+        description: 'Persistent - custom subdirectory for this operation',
         available: false
       },
       { 
-        path: '/app/mirror', 
-        label: 'Container Mirror (Ephemeral)', 
-        description: '⚠️ Ephemeral - lost on container restart, not recommended',
+        path: EPHEMERAL_MIRROR_DIR,
+        label: 'App Mirror (Ephemeral)', 
+        description: 'Ephemeral mirror path under the app root',
         available: false
       }
     ];
@@ -1030,7 +1050,7 @@ app.get('/api/operators', async (req: Request, res: Response) => {
         if (operators) {
           if (detailed === 'true') {
             const detailedOperators = operators.map(operator => {
-              const normalizedChannels = normalizeChannels(operator.channels || [], operator.name);
+              const normalizedChannels = normalizeChannels(operator.channels || [], operator.name, operator);
               return {
                 name: operator.name,
                 defaultChannel: operator.defaultChannel,
@@ -1056,7 +1076,7 @@ app.get('/api/operators', async (req: Request, res: Response) => {
 
       if (detailed === 'true') {
         const detailedOperators = filteredOperators.map(operator => {
-          const normalizedChannels = normalizeChannels(operator.channels || [], operator.name);
+          const normalizedChannels = normalizeChannels(operator.channels || [], operator.name, operator);
           return {
             name: operator.name,
             defaultChannel: operator.defaultChannel,
@@ -1114,6 +1134,79 @@ app.post('/api/operators/refresh-cache', async (req: Request, res: Response) => 
     res.status(500).json({ error: 'Failed to refresh operator cache' });
   }
 });
+
+function compareVersionStrings(a: string, b: string): number {
+  const getBaseVersion = (version: string): string => {
+    const match = version.match(/^(\d+\.\d+\.\d+)/);
+    return match ? match[1] : version;
+  };
+
+  const baseA = getBaseVersion(a);
+  const baseB = getBaseVersion(b);
+
+  const partsA = baseA.split('.').map(Number);
+  const partsB = baseB.split('.').map(Number);
+
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const partA = partsA[i] || 0;
+    const partB = partsB[i] || 0;
+
+    if (partA !== partB) {
+      return partA - partB;
+    }
+  }
+
+  return a.localeCompare(b);
+}
+
+function sortVersions(versions: string[]): string[] {
+  return Array.from(new Set(versions.filter(version => version && version.trim()))).sort(compareVersionStrings);
+}
+
+function getQueryStringValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const first = value[0];
+    return typeof first === 'string' ? first : undefined;
+  }
+
+  return undefined;
+}
+
+function extractChannelNames(channels: (string | { name: string })[] | undefined): string[] {
+  if (!channels || !Array.isArray(channels)) {
+    return [];
+  }
+
+  if (channels.length === 1 && typeof channels[0] === 'string') {
+    if (channels[0].includes('\n')) {
+      return channels[0].split('\n').filter(line => line.trim()).map(channel => channel.trim());
+    }
+
+    if (channels[0].includes(' ')) {
+      return channels[0].split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
+    }
+
+    return [channels[0]];
+  }
+
+  return channels
+    .map(channel => {
+      if (typeof channel === 'string') {
+        return channel;
+      }
+
+      if (channel && typeof channel === 'object' && channel.name) {
+        return channel.name;
+      }
+
+      return String(channel);
+    })
+    .filter(channel => channel.trim());
+}
 
 function extractVersionInfo(channelNames: string[], operatorName: string | null): { genericChannels: string[]; versions: string[] } {
   const versions = new Set<string>();
@@ -1174,60 +1267,58 @@ function extractVersionInfo(channelNames: string[], operatorName: string | null)
     genericChannels.push(channel);
   });
 
-  const sortedVersions = Array.from(versions).sort((a, b) => {
-    const getBaseVersion = (version: string): string => {
-      const match = version.match(/^(\d+\.\d+\.\d+)/);
-      return match ? match[1] : version;
-    };
-    
-    const baseA = getBaseVersion(a);
-    const baseB = getBaseVersion(b);
-
-    const partsA = baseA.split('.').map(Number);
-    const partsB = baseB.split('.').map(Number);
-    
-    for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
-      const partA = partsA[i] || 0;
-      const partB = partsB[i] || 0;
-      
-      if (partA !== partB) {
-        return partA - partB;
-      }
-    }
-
-    return a.localeCompare(b);
-  });
-  
   return {
     genericChannels,
-    versions: sortedVersions
+    versions: sortVersions(Array.from(versions))
   };
 }
 
-function normalizeChannels(channels: (string | { name: string })[] | undefined, operatorName: string | null = null): ChannelObject[] {
-  if (!channels || !Array.isArray(channels)) {
+function getVersionsFromMetadata(operatorData: OperatorEntry, channelName?: string): string[] {
+  if (channelName && operatorData.channelVersions && Object.prototype.hasOwnProperty.call(operatorData.channelVersions, channelName)) {
+    return sortVersions(operatorData.channelVersions[channelName] || []);
+  }
+
+  if (!channelName) {
+    const allChannelVersions = Object.values(operatorData.channelVersions || {}).flat();
+    if (allChannelVersions.length > 0 || Object.keys(operatorData.channelVersions || {}).length > 0) {
+      return sortVersions(allChannelVersions);
+    }
+
+    if (operatorData.availableVersions) {
+      return sortVersions(operatorData.availableVersions);
+    }
+  }
+
+  const channelNames = extractChannelNames(operatorData.channels);
+  const { versions } = extractVersionInfo(channelNames, operatorData.name);
+  return versions;
+}
+
+function normalizeChannels(
+  channels: (string | { name: string })[] | undefined,
+  operatorName: string | null = null,
+  operatorData?: OperatorEntry,
+): ChannelObject[] {
+  let channelNames = extractChannelNames(channels);
+
+  if (channelNames.length === 0 && operatorData?.channelVersions) {
+    channelNames = Object.keys(operatorData.channelVersions);
+  }
+
+  if (channelNames.length === 0) {
     return [];
   }
-  
-  let channelNames: string[] = [];
 
-  if (channels.length === 1 && typeof channels[0] === 'string') {
-    if (channels[0].includes('\n')) {
-      channelNames = channels[0].split('\n').filter(line => line.trim()).map(channel => channel.trim());
-    } else if (channels[0].includes(' ')) {
-      channelNames = channels[0].split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
-    } else {
-      channelNames = [channels[0]];
-    }
-  } else {
-    channelNames = channels.map(channel => {
-      if (typeof channel === 'string') {
-        return channel;
-      } else if (channel && typeof channel === 'object' && channel.name) {
-        return channel.name;
-      } else {
-        return String(channel);
-      }
+  if (operatorData?.channelVersions || operatorData?.channelVersionRanges) {
+    return channelNames.map(channel => {
+      const range = operatorData?.channelVersionRanges?.[channel];
+      const availableVersions = operatorData ? getVersionsFromMetadata(operatorData, channel) : [];
+      return {
+        name: channel,
+        availableVersions,
+        minVersion: range?.minVersion ?? null,
+        maxVersion: range?.maxVersion ?? null,
+      };
     });
   }
 
@@ -1244,57 +1335,28 @@ function normalizeChannels(channels: (string | { name: string })[] | undefined, 
 app.get('/api/operators/:operator/versions', async (req: Request, res: Response) => {
   try {
     const { operator } = req.params;
-    const { catalog, channel } = req.query;
+    const catalog = getQueryStringValue(req.query.catalog);
+    const channel = getQueryStringValue(req.query.channel);
 
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       if (catalog) {
-        const catalogType = getCatalogNameFromUrl(catalog as string);
-        const catalogVersion = (catalog as string).includes(':') ? (catalog as string).split(':')[1] : 'v4.20';
+        const catalogType = getCatalogNameFromUrl(catalog);
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
         if (operators) {
           const operatorData = operators.find(op => op.name === operator);
           if (operatorData) {
-            let channelNames: string[] = [];
-            if (operatorData.channels && operatorData.channels.length > 0) {
-              const firstChannel = operatorData.channels[0];
-              if (typeof firstChannel === 'string' && (firstChannel.includes(' ') || firstChannel.includes('\n'))) {
-                if (firstChannel.includes('\n')) {
-                  channelNames = firstChannel.split('\n').filter(line => line.trim()).map(channel => channel.trim());
-                } else if (firstChannel.includes(' ')) {
-                  channelNames = firstChannel.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
-                }
-              } else {
-                channelNames = (operatorData.channels as string[]).filter(channel => channel && (channel as string).trim());
-              }
-            }
-            
-            const { versions } = extractVersionInfo(channelNames, operatorData.name);
-            return res.json({ versions });
+            return res.json({ versions: getVersionsFromMetadata(operatorData, channel) });
           }
         }
       } else {
-        for (const [key, operators] of Object.entries(catalogData.operators)) {
+        for (const operators of Object.values(catalogData.operators)) {
           const operatorData = operators.find(op => op.name === operator);
           if (operatorData) {
-            let channelNames: string[] = [];
-            if (operatorData.channels && operatorData.channels.length > 0) {
-              const firstChannel = operatorData.channels[0];
-              if (typeof firstChannel === 'string' && (firstChannel.includes(' ') || firstChannel.includes('\n'))) {
-                if (firstChannel.includes('\n')) {
-                  channelNames = firstChannel.split('\n').filter(line => line.trim()).map(channel => channel.trim());
-                } else if (firstChannel.includes(' ')) {
-                  channelNames = firstChannel.split(' ').filter(channel => channel.trim()).map(channel => channel.trim());
-                }
-              } else {
-                channelNames = (operatorData.channels as string[]).filter(channel => channel && (channel as string).trim());
-              }
-            }
-
-            const { versions } = extractVersionInfo(channelNames, operatorData.name);
-            return res.json({ versions });
+            return res.json({ versions: getVersionsFromMetadata(operatorData, channel) });
           }
         }
       }
@@ -1311,20 +1373,20 @@ app.get('/api/operators/:operator/versions', async (req: Request, res: Response)
 app.get('/api/operator-channels/:operator', async (req: Request, res: Response) => {
   try {
     const { operator } = req.params;
-    const { catalogUrl } = req.query;
+    const catalogUrl = getQueryStringValue(req.query.catalogUrl);
 
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       if (catalogUrl) {
-        const catalogType = getCatalogNameFromUrl(catalogUrl as string);
-        const catalogVersion = (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.20';
+        const catalogType = getCatalogNameFromUrl(catalogUrl);
+        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
         if (operators) {
           const operatorData = operators.find(op => op.name === operator);
           if (operatorData) {
-            const normalizedChannels = normalizeChannels(operatorData.channels || [], operatorData.name);
+            const normalizedChannels = normalizeChannels(operatorData.channels || [], operatorData.name, operatorData);
             return res.json({
               name: operatorData.name,
               defaultChannel: operatorData.defaultChannel,
@@ -1337,10 +1399,10 @@ app.get('/api/operator-channels/:operator', async (req: Request, res: Response) 
           }
         }
       } else {
-        for (const [key, operators] of Object.entries(catalogData.operators)) {
+        for (const operators of Object.values(catalogData.operators)) {
           const operatorData = operators.find(op => op.name === operator);
           if (operatorData) {
-            const normalizedChannels = normalizeChannels(operatorData.channels || [], operatorData.name);
+            const normalizedChannels = normalizeChannels(operatorData.channels || [], operatorData.name, operatorData);
             return res.json({
               name: operatorData.name,
               defaultChannel: operatorData.defaultChannel,
@@ -1497,7 +1559,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
     }
 
     const cacheDir = CACHE_DIR;
-    const baseMirrorPath = '/app/data/mirrors';
+    const baseMirrorPath = MIRROR_BASE_DIR;
     let subdirName = 'default';
     
     if (mirrorDestinationSubdir && mirrorDestinationSubdir.trim()) {
@@ -1614,12 +1676,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
     const logFile = path.join(LOGS_DIR, `${operationId}.log`);
     const logStream = fs.createWriteStream(logFile);
 
-    let mirrorUrl: string;
-    if (mirrorPath.startsWith('/app/')) {
-    mirrorUrl = `file://${mirrorPath.substring(5)}`;
-  } else {
-    mirrorUrl = `file://${mirrorPath}`;
-  }
+    const mirrorUrl = pathToFileURL(mirrorPath).href;
 
   const child = spawn('oc-mirror', [
       '--v2',
@@ -1627,11 +1684,11 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
       '--dest-tls-verify=false',
       '--src-tls-verify=false',
       '--cache-dir', cacheDir,
-      '--authfile', '/app/pull-secret.json',
+      '--authfile', AUTHFILE_PATH,
       mirrorUrl
     ], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: '/app'
+      cwd: APP_ROOT_DIR
     });
 
     runningProcesses.set(operationId, {
@@ -2033,6 +2090,9 @@ app.listen(PORT, () => {
   console.log(`Operations directory: ${OPERATIONS_DIR}`);
   console.log(`Logs directory: ${LOGS_DIR}`);
   console.log(`Cache directory: ${CACHE_DIR}`);
+  console.log(`App root directory: ${APP_ROOT_DIR}`);
+  console.log(`Mirror base directory: ${MIRROR_BASE_DIR}`);
+  console.log(`Authfile path: ${AUTHFILE_PATH}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
   console.log(`API endpoints available at: http://localhost:${PORT}/api/*`);
 });

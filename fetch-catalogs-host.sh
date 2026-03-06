@@ -160,189 +160,34 @@ extract_catalog_data() {
     fi
 }
 
-# Function to process catalog data and create operator index (based on existing logic)
+# Function to process catalog data and generate operator/dependency metadata
 process_catalog_data() {
     local catalog_type=$1
     local ocp_version=$2
     local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
     local operators_file="${catalog_dir}/operators.json"
+    local dependencies_file="${catalog_dir}/dependencies.json"
     
     if [ ! -d "${catalog_dir}/configs" ]; then
         print_warning "No configs directory found for ${catalog_type} v${ocp_version}"
-        return
+        return 1
     fi
     
-    print_status "Processing operators for ${catalog_type} v${ocp_version}..."
+    print_status "Generating operator metadata for ${catalog_type} v${ocp_version}..."
     
-    # Initialize operators array
-    echo '[]' > "$operators_file"
+    if ! python3 "scripts/catalog_metadata.py" generate \
+        --catalog-dir "$catalog_dir" \
+        --catalog-type "$catalog_type" \
+        --ocp-version "v${ocp_version}" \
+        --operators-file "$operators_file" \
+        --dependencies-file "$dependencies_file"; then
+        print_error "Failed to generate metadata for ${catalog_type} v${ocp_version}"
+        return 1
+    fi
     
-    # Process each operator directory (based on existing container.sh logic)
-    for operator_dir in "${catalog_dir}/configs"/*; do
-        if [ -d "$operator_dir" ]; then
-            local catalog_json="${operator_dir}/catalog.json"
-            local index_json="${operator_dir}/index.json"
-            local index_yaml="${operator_dir}/index.yaml"
-            local package_json="${operator_dir}/package.json"
-            local channel_json="${operator_dir}/channels.json"
-            local catalog_yaml="${operator_dir}/catalog.yaml"
-            local catalog_yml="${operator_dir}/catalog.yml"
-            
-            local json_file=""
-            local operator_name=""
-            local default_channel=""
-            local channels=""
-            
-            # Try different file formats
-            # PRIORITY: package.json + channels/ directory is checked FIRST as it's the most accurate
-            # for newer FBC (File-Based Catalog) format. catalog.json may contain bundled/outdated data.
-            if [ -f "$package_json" ] && [ -d "${operator_dir}/channels" ]; then
-                # Handle package.json + channels/ directory format (like volsync-product, odf-operator)
-                # This is the most accurate format for newer catalogs
-                operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
-                default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
-                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract channel names from all JSON files in channels/ directory
-                    # Files can be named channel-*.json OR directly as the channel name (e.g., stable-4.20.json)
-                    local channel_names=""
-                    
-                    # Process all JSON files in the channels directory
-                    for channel_file in "${operator_dir}/channels"/*.json; do
-                        if [ -f "$channel_file" ]; then
-                            # Extract channel name from the 'name' field in the JSON file (most reliable)
-                            local channel_name=$(jq -r '.name // empty' "$channel_file" 2>/dev/null)
-                            if [ -n "$channel_name" ] && [ "$channel_name" != "null" ]; then
-                                channel_names="${channel_names} ${channel_name}"
-                            fi
-                        fi
-                    done
-                    
-                    # Remove duplicates and sort
-                    channels=$(echo "$channel_names" | tr ' ' '\n' | grep -v "^$" | sort -V | uniq | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
-                fi
-            elif [ -f "$catalog_json" ]; then
-                json_file="$catalog_json"
-                # Handle catalog.json with multiple JSON objects (using -cs for compact and slurp)
-                # Get operator name and default channel from olm.package object
-                operator_name=$(jq -cs -r '.[] | select(.schema == "olm.package") | .name // empty' "$json_file" 2>/dev/null)
-                default_channel=$(jq -cs -r '.[] | select(.schema == "olm.package") | .defaultChannel // empty' "$json_file" 2>/dev/null)
-                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract only channel names from olm.channel schema objects (not bundle names from olm.bundle)
-                    channels=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
-                    
-                    # Also check for separate channel files (e.g., stable-3.9.json, stable-3.10.json, quay-v3.5.json)
-                    # These files contain olm.channel schema objects for additional channels
-                    for channel_file in "${operator_dir}"/*.json; do
-                        if [ -f "$channel_file" ] && [ "$channel_file" != "$catalog_json" ] && [ "$(basename "$channel_file")" != "released-bundles.json" ]; then
-                            # Extract channel name from separate channel file
-                            local extra_channel=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$channel_file" 2>/dev/null | head -1)
-                            if [ -n "$extra_channel" ] && [ "$extra_channel" != "null" ]; then
-                                channels="$channels $extra_channel"
-                            fi
-                        fi
-                    done
-                    # Remove duplicates and sort
-                    channels=$(echo "$channels" | tr ' ' '\n' | grep -v "^$" | sort -V | uniq | tr '\n' ' ' | sed 's/ $//')
-                    
-                    # If no channels found, try alternative approach looking for channel entries
-                    if [ -z "$channels" ]; then
-                        channels=$(jq -cs -r '.[] | .entries[].name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
-                    fi
-                fi
-            elif [ -f "$index_json" ]; then
-                json_file="$index_json"
-                # Handle index.json with multiple JSON objects (same as catalog.json)
-                # Get operator name and default channel from olm.package object
-                operator_name=$(jq -cs -r '.[] | select(.schema == "olm.package") | .name // empty' "$json_file" 2>/dev/null)
-                default_channel=$(jq -cs -r '.[] | select(.schema == "olm.package") | .defaultChannel // empty' "$json_file" 2>/dev/null)
-                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract only channel names from olm.channel schema objects (not bundle names from olm.bundle)
-                    channels=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
-                    
-                    # Also check for separate channel files (e.g., stable-3.9.json, stable-3.10.json, quay-v3.5.json)
-                    # These files contain olm.channel schema objects for additional channels
-                    for channel_file in "${operator_dir}"/*.json; do
-                        if [ -f "$channel_file" ] && [ "$channel_file" != "$index_json" ] && [ "$(basename "$channel_file")" != "released-bundles.json" ]; then
-                            # Extract channel name from separate channel file
-                            local extra_channel=$(jq -cs -r '.[] | select(.schema == "olm.channel") | .name // empty' "$channel_file" 2>/dev/null | head -1)
-                            if [ -n "$extra_channel" ] && [ "$extra_channel" != "null" ]; then
-                                channels="$channels $extra_channel"
-                            fi
-                        fi
-                    done
-                    # Remove duplicates and sort
-                    channels=$(echo "$channels" | tr ' ' '\n' | grep -v "^$" | sort -V | uniq | tr '\n' ' ' | sed 's/ $//')
-                    
-                    # If no channels found, try alternative approach looking for channel entries
-                    if [ -z "$channels" ]; then
-                        channels=$(jq -cs -r '.[] | .entries[].name // empty' "$json_file" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
-                    fi
-                fi
-            elif [ -f "$index_yaml" ]; then
-                # Handle index.yaml files (like lightspeed-operator)
-                operator_name=$(grep "^name:" "$index_yaml" | head -1 | sed 's/^name: //' 2>/dev/null)
-                default_channel=$(grep "^defaultChannel:" "$index_yaml" | head -1 | sed 's/^defaultChannel: //' 2>/dev/null)
-                # For index.yaml files, we'll set channels to empty for now (complex structure)
-                channels=""
-            elif [ -f "$package_json" ] && [ -f "$channel_json" ]; then
-                # Handle package.json + channels.json format
-                operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
-                default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
-                if [ -n "$default_channel" ] && [ "$default_channel" != "null" ]; then
-                    # Extract all channel names from channels.json (multiple JSON objects)
-                    channels=$(jq -r '.name // empty' "$channel_json" 2>/dev/null | grep -v "^$" | sort -u | tr '\n' ' ' | sed 's/ $//')
-                fi
-            elif [ -f "$catalog_yaml" ] || [ -f "$catalog_yml" ]; then
-                # Handle catalog.yaml or catalog.yml files (YAML format)
-                if [ -f "$catalog_yaml" ]; then
-                    yaml_file="$catalog_yaml"
-                else
-                    yaml_file="$catalog_yml"
-                fi
-                # Use grep/sed approach which is more reliable for this YAML structure
-                operator_name=$(grep -n "name:" "$yaml_file" | grep -v "package:" | head -1 | sed 's/.*name: //' 2>/dev/null)
-                default_channel=$(grep "defaultChannel:" "$yaml_file" | head -1 | sed 's/.*defaultChannel: //' 2>/dev/null)
-                # For YAML files, we'll set channels to empty for now (complex structure)
-                channels=""
-            elif [ -f "$package_json" ]; then
-                # Handle package.json only (fallback)
-                operator_name=$(jq -r '.name // empty' "$package_json" 2>/dev/null)
-                default_channel=$(jq -r '.defaultChannel // empty' "$package_json" 2>/dev/null)
-                # For package.json only, we'll set a placeholder for channels
-                channels=""
-            else
-                print_warning "No supported catalog files found in $operator_dir"
-                continue
-            fi
-            
-            # Extract operator information using jq (based on existing logic)
-            if command -v jq >/dev/null 2>&1 && [ -n "$operator_name" ] && [ "$operator_name" != "null" ]; then
-                # Create operator entry using jq to avoid JSON escaping issues
-                jq --arg name "$operator_name" \
-                   --arg defaultChannel "$default_channel" \
-                   --arg channels "$channels" \
-                   --arg catalog "${catalog_type}" \
-                   --arg ocpVersion "v${ocp_version}" \
-                   --arg catalogUrl "registry.redhat.io/redhat/${catalog_type}:v${ocp_version}" \
-                   -n '{
-                     name: $name,
-                     defaultChannel: $defaultChannel,
-                     channels: ($channels | split(" ") | map(select(. != ""))),
-                     catalog: $catalog,
-                     ocpVersion: $ocpVersion,
-                     catalogUrl: $catalogUrl
-                   }' | jq --argjson entry "$(cat)" '. += [$entry]' "$operators_file" > "${operators_file}.tmp" && mv "${operators_file}.tmp" "$operators_file"
-                
-                # Debug output
-                print_status "Successfully extracted operator: $operator_name (default: $default_channel, all channels: $channels)"
-            else
-                print_warning "Could not extract operator information from $operator_dir"
-            fi
-        fi
-    done
-    
-    local operator_count=$(jq '. | length' "$operators_file")
-    print_success "Processed $operator_count operators for ${catalog_type} v${ocp_version}"
+    local operator_count=$(jq '. | length' "$operators_file" 2>/dev/null || echo "0")
+    local dep_count=$(jq 'keys | length' "$dependencies_file" 2>/dev/null || echo "0")
+    print_success "Generated metadata for $operator_count operators and $dep_count dependency entries in ${catalog_type} v${ocp_version}"
     
     # Create/update catalog-info.json with operator count
     cat > "${catalog_dir}/catalog-info.json" << EOF
@@ -354,70 +199,6 @@ process_catalog_data() {
   "operator_count": ${operator_count}
 }
 EOF
-}
-
-# Function to extract operator dependencies from catalog.json files
-extract_operator_dependencies() {
-    local catalog_type=$1
-    local ocp_version=$2
-    local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
-    local dependencies_file="${catalog_dir}/dependencies.json"
-    
-    if [ ! -d "${catalog_dir}/configs" ]; then
-        print_warning "No configs directory found for ${catalog_type} v${ocp_version} - skipping dependency extraction"
-        return
-    fi
-    
-    print_status "Extracting operator dependencies for ${catalog_type} v${ocp_version}..."
-    
-    # Initialize dependencies object
-    echo '{}' > "$dependencies_file"
-    
-    # Process each operator directory
-    for operator_dir in "${catalog_dir}/configs"/*; do
-        if [ -d "$operator_dir" ]; then
-            local operator_name=$(basename "$operator_dir")
-            local catalog_json="${operator_dir}/catalog.json"
-            local deps_array="[]"
-            
-            # Extract dependencies from bundles directory (preferred) or catalog.json
-            local bundles_dir="${operator_dir}/bundles"
-            
-            if [ -d "$bundles_dir" ]; then
-                # Use bundles directory - get dependencies from the latest bundle
-                # Find the latest bundle file (highest version number)
-                local latest_bundle=$(ls -1 "$bundles_dir"/*.json 2>/dev/null | sort -V | tail -1)
-                if [ -n "$latest_bundle" ] && [ -f "$latest_bundle" ]; then
-                    deps_array=$(jq -c '
-                        [.properties // [] | .[] | 
-                         select(.type == "olm.package.required") | .value | 
-                         {packageName: .packageName, versionRange: .versionRange}] | 
-                        unique_by(.packageName)
-                    ' "$latest_bundle" 2>/dev/null || echo "[]")
-                fi
-            elif [ -f "$catalog_json" ]; then
-                # Fallback to catalog.json - extract olm.package.required from olm.bundle entries
-                # Get dependencies from the LAST bundle (latest version) by reversing before unique_by
-                deps_array=$(jq -cs '
-                    [.[] | select(.schema == "olm.bundle")] | reverse | 
-                    [.[] | .properties // [] | .[] | 
-                     select(.type == "olm.package.required") | .value | 
-                     {packageName: .packageName, versionRange: .versionRange}] | 
-                    unique_by(.packageName)
-                ' "$catalog_json" 2>/dev/null || echo "[]")
-            fi
-            
-            # Only add if there are dependencies
-            if [ "$deps_array" != "[]" ] && [ -n "$deps_array" ]; then
-                jq --arg op "$operator_name" --argjson deps "$deps_array" \
-                   '. + {($op): $deps}' "$dependencies_file" > "${dependencies_file}.tmp" && \
-                mv "${dependencies_file}.tmp" "$dependencies_file"
-            fi
-        fi
-    done
-    
-    local dep_count=$(jq 'keys | length' "$dependencies_file" 2>/dev/null || echo "0")
-    print_success "Extracted dependencies for $dep_count operators in ${catalog_type} v${ocp_version}"
 }
 
 # Main execution
@@ -443,6 +224,23 @@ main() {
     if ! command -v jq >/dev/null 2>&1; then
         print_error "jq is not available. Cannot process catalog data."
         print_error "Please install jq and try again."
+        exit 1
+    fi
+
+    # Check if python3 is available
+    if ! command -v python3 >/dev/null 2>&1; then
+        print_error "python3 is not available. Cannot generate catalog metadata."
+        print_error "Please install python3 and try again."
+        exit 1
+    fi
+
+    # Check if PyYAML is available for structured catalog parsing
+    if ! python3 - <<'PY' >/dev/null 2>&1
+import yaml  # noqa: F401
+PY
+    then
+        print_error "PyYAML is not available for python3. Cannot generate catalog metadata."
+        print_error "Please install the python3 yaml package (for example, PyYAML) and try again."
         exit 1
     fi
     
@@ -476,24 +274,18 @@ main() {
         local ocp_version="$2"
         local job_num="$3"
         
-        # Check freshness first
-        if is_catalog_fresh "$catalog_type" "$ocp_version"; then
-            echo "SKIPPED:${catalog_type}:${ocp_version}" >> "$results_file"
-            return 0
+        # Extract if needed, then always regenerate metadata from the extracted configs.
+        if extract_catalog_data "$catalog_type" "$ocp_version"; then
+            if process_catalog_data "$catalog_type" "$ocp_version"; then
+                echo "SUCCESS:${catalog_type}:${ocp_version}" >> "$results_file"
+                return 0
+            fi
         fi
         
-        # Extract and process
-        if extract_catalog_data "$catalog_type" "$ocp_version"; then
-            process_catalog_data "$catalog_type" "$ocp_version"
-            extract_operator_dependencies "$catalog_type" "$ocp_version"
-            echo "SUCCESS:${catalog_type}:${ocp_version}" >> "$results_file"
-            return 0
-        else
-            echo "FAILED:${catalog_type}:${ocp_version}" >> "$results_file"
-            return 1
-        fi
+        echo "FAILED:${catalog_type}:${ocp_version}" >> "$results_file"
+        return 1
     }
-    export -f process_catalog_job extract_operator_dependencies
+    export -f process_catalog_job
     
     # Process catalogs with controlled parallelism
     for catalog_job in "${CATALOG_JOBS[@]}"; do

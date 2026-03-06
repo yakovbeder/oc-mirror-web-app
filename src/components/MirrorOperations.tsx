@@ -381,10 +381,18 @@ const MirrorOperations: React.FC = () => {
     setShowLogs(false);
   };
 
+  const getMirrorFullPath = (mirrorDestination: string) => {
+    if (mirrorDestination.startsWith('/app/data')) {
+      const hostPath = mirrorDestination.replace('/app/data', 'data');
+      const projectRoot = '/home/ybeder/oc-mirror-web-app';
+      return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+    }
+
+    return mirrorDestination;
+  };
+
   const copyMirrorPath = async (mirrorDestination: string) => {
-    const hostPath = mirrorDestination.replace('/app/data', 'data');
-    const projectRoot = '/home/ybeder/oc-mirror-web-app';
-    const fullPath = `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
+    const fullPath = getMirrorFullPath(mirrorDestination);
 
     try {
       await navigator.clipboard.writeText(fullPath);
@@ -404,12 +412,6 @@ const MirrorOperations: React.FC = () => {
       }
       document.body.removeChild(textArea);
     }
-  };
-
-  const getMirrorFullPath = (mirrorDestination: string) => {
-    const hostPath = mirrorDestination.replace('/app/data', 'data');
-    const projectRoot = '/home/ybeder/oc-mirror-web-app';
-    return `${projectRoot}/${hostPath}`.replace(/\/\//g, '/');
   };
 
   const isDeleteConfig = deleteFilename && !deleteOperationId;

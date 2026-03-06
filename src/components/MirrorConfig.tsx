@@ -310,8 +310,32 @@ const MirrorConfig: React.FC = () => {
       const response = await axios.get(
         `/api/operator-channels/${operatorName}?catalogUrl=${encodeURIComponent(catalogUrl)}`,
       );
-      setOperatorChannels(prev => ({ ...prev, [key]: response.data }));
-      return response.data;
+      const channelDetails = Array.isArray(response.data?.channels)
+        ? response.data.channels
+        : Array.isArray(response.data)
+          ? response.data
+          : [];
+
+      const allChannels = Array.isArray(response.data?.allChannels)
+        ? response.data.allChannels
+        : channelDetails
+            .map((channel: { name?: string }) => channel?.name)
+            .filter((channel: string | undefined): channel is string => Boolean(channel));
+
+      if (channelDetails.length > 0) {
+        setAvailableVersions(prev => {
+          const next = { ...prev };
+          channelDetails.forEach((channel: { name?: string; availableVersions?: string[] }) => {
+            if (channel?.name && Array.isArray(channel.availableVersions)) {
+              next[`${operatorName}:${channel.name}:${catalogUrl}`] = channel.availableVersions;
+            }
+          });
+          return next;
+        });
+      }
+
+      setOperatorChannels(prev => ({ ...prev, [key]: allChannels }));
+      return allChannels;
     } catch (error) {
       console.error(`Error fetching channels for ${operatorName}:`, error);
       addDangerAlert(`Failed to load channels for ${operatorName}`);
@@ -326,7 +350,7 @@ const MirrorConfig: React.FC = () => {
   ): Promise<string[]> => {
     try {
       const response = await axios.get(`/api/operators/${operatorName}/versions`, {
-        params: { catalog: catalogUrl },
+        params: { catalog: catalogUrl, channel: channelName },
       });
       if (response.data?.versions?.length > 0) return response.data.versions;
     } catch (error) {

@@ -8,7 +8,11 @@ set -e
 
 # Optional behavior flags (can be set via env vars or script args)
 # - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
+# - FETCH_CATALOGS=true -> refresh catalog-data before building
+# - FORCE_CATALOG_REFRESH=true -> pass --force to fetch-catalogs-host.sh
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
+FETCH_CATALOGS="${FETCH_CATALOGS:-false}"
+FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-false}"
 
 # Image name (use localhost/ prefix to prevent Podman from searching registries)
 IMAGE_NAME="localhost/oc-mirror-web-app"
@@ -152,8 +156,11 @@ create_directories() {
 
         print_status "Fetching operator catalogs (this may take several minutes)..."
 
-        # Check if catalog data already exists and is recent (less than 7 days old)
-        if [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
+        local fetch_args=()
+        if [ "$FORCE_CATALOG_REFRESH" = "true" ]; then
+            print_status "Forcing catalog refresh via fetch-catalogs-host.sh --force"
+            fetch_args+=(--force)
+        elif [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
             local catalog_age=$(( $(date +%s) - $(stat -c %Y catalog-data/catalog-index.json 2>/dev/null || echo 0) ))
             local max_age=$((7 * 24 * 3600))  # 7 days in seconds
             
@@ -170,7 +177,7 @@ create_directories() {
         # Run the host-side catalog fetch script
         if [ -f "fetch-catalogs-host.sh" ]; then
             chmod +x fetch-catalogs-host.sh
-            if ./fetch-catalogs-host.sh; then
+            if ./fetch-catalogs-host.sh "${fetch_args[@]}"; then
                 print_success "Catalog fetch completed successfully"
             else
                 print_warning "Catalog fetch failed, will use fallback data"
@@ -277,7 +284,132 @@ show_status() {
     echo ""
 }
 
+# Show help
+show_help() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --help, -h          Show this help message"
+    echo "  --build-only        Only build the container image"
+    echo "  --run-only          Only run the container (assumes image exists)"
+    echo "  --stop              Stop and remove the container"
+    echo "  --logs              Show container logs"
+    echo "  --status            Show container status"
+    echo "  --engine            Show detected container engine"
+    echo "  --fetch-catalogs    Fetch operator catalogs during build"
+    echo "  --force-catalogs    Force host catalog refetch and ignore freshness"
+    echo "  --no-cache          Rebuild the container image without using cache"
+    echo ""
+    echo "Environment Variables:"
+    echo "  FETCH_CATALOGS=true         Fetch operator catalogs during build"
+    echo "  FORCE_CATALOG_REFRESH=true Force host catalog refetch during build"
+    echo "  BUILD_NO_CACHE=true        Disable build cache when building the container image"
+    echo ""
+    echo "Examples:"
+    echo "  $0"
+    echo "  $0 --build-only"
+    echo "  $0 --fetch-catalogs"
+    echo "  $0 --fetch-catalogs --force-catalogs"
+    echo "  $0 --build-only --fetch-catalogs --force-catalogs --no-cache"
+    echo ""
+    echo "Container Engine Support:"
+    echo "  - Podman (required)"
+    echo ""
+    echo "Catalog Fetching:"
+    echo "  By default, the build process skips catalog fetching for faster builds."
+    echo "  Use --fetch-catalogs to refresh when the existing snapshot is stale."
+    echo "  Use --force-catalogs to force a full host-side refetch before the image build."
+}
 
+# Build image without running the container
+build_only() {
+    echo "=========================================="
+    echo "  OC Mirror v2 Web Application"
+    echo "  Containerized Runner"
+    echo "=========================================="
+    echo ""
+
+    check_container_runtime
+    detect_system_architecture
+    create_directories
+    fix_permissions
+
+    if [ "$FETCH_CATALOGS" = "true" ]; then
+        fetch_catalogs
+    else
+        print_status "Skipping catalog fetch (using existing catalog data)"
+    fi
+
+    build_image
+    print_success "Image built successfully. Run with: $0 --run-only"
+}
+
+set_action() {
+    local next_action="$1"
+
+    if [ -n "${ACTION:-}" ] && [ "$ACTION" != "main" ] && [ "$ACTION" != "$next_action" ]; then
+        print_error "Conflicting actions: '$ACTION' and '$next_action'"
+        echo "Use --help for usage information"
+        exit 1
+    fi
+
+    ACTION="$next_action"
+}
+
+parse_arguments() {
+    ACTION="main"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                set_action "help"
+                shift
+                ;;
+            --build-only)
+                set_action "build-only"
+                shift
+                ;;
+            --run-only)
+                set_action "run-only"
+                shift
+                ;;
+            --stop)
+                set_action "stop"
+                shift
+                ;;
+            --logs)
+                set_action "logs"
+                shift
+                ;;
+            --status)
+                set_action "status"
+                shift
+                ;;
+            --engine)
+                set_action "engine"
+                shift
+                ;;
+            --fetch-catalogs)
+                FETCH_CATALOGS=true
+                shift
+                ;;
+            --force-catalogs)
+                FETCH_CATALOGS=true
+                FORCE_CATALOG_REFRESH=true
+                shift
+                ;;
+            --no-cache)
+                BUILD_NO_CACHE=true
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+}
 
 # Main execution
 main() {
@@ -305,49 +437,18 @@ main() {
 }
 
 # Handle script arguments
-case "${1:-}" in
-    --help|-h)
-        echo "Usage: $0 [OPTIONS]"
-        echo ""
-        echo "Options:"
-        echo "  --help, -h     Show this help message"
-        echo "  --build-only   Only build the container image"
-        echo "  --run-only     Only run the container (assumes image exists)"
-        echo "  --stop         Stop and remove the container"
-        echo "  --logs         Show container logs"
-        echo "  --status       Show container status"
-        echo "  --engine       Show detected container engine"
-        echo "  --fetch-catalogs Fetch operator catalogs during build (slower but complete)"
-        echo "  --no-cache     Rebuild the container image without using cache"
-        echo ""
-        echo "Environment Variables:"
-        echo "  FETCH_CATALOGS=true  Fetch operator catalogs during build"
-        echo "  BUILD_NO_CACHE=true  Disable build cache when building the container image"
-        echo ""
-        echo "Examples:"
-        echo "  $0              # Build and run the application (fast build)"
-        echo "  $0 --build-only # Only build the image"
-        echo "  $0 --stop       # Stop the application"
-        echo "  $0 --logs       # View application logs"
-        echo "  $0 --fetch-catalogs # Build with catalog fetching (complete data)"
-        echo "  $0 --no-cache   # Build and run without using cache"
-        echo ""
-        echo "Container Engine Support:"
-        echo "  - Podman (required)"
-        echo ""
-        echo "Catalog Fetching:"
-        echo "  By default, the build process skips catalog fetching for faster builds."
-        echo "  Use --fetch-catalogs to fetch operator catalogs for OCP versions 4.16-4.20."
-        echo "  Catalog fetching can take several minutes but provides complete operator data."
+parse_arguments "$@"
+
+case "$ACTION" in
+    help)
+        show_help
         exit 0
         ;;
-    --build-only)
-        check_container_runtime
-        build_image
-        print_success "Image built successfully. Run with: $0 --run-only"
+    build-only)
+        build_only
         exit 0
         ;;
-    --run-only)
+    run-only)
         check_container_runtime
         detect_system_architecture
         create_directories
@@ -356,7 +457,7 @@ case "${1:-}" in
         show_status
         exit 0
         ;;
-    --stop)
+    stop)
         detect_container_runtime
         print_status "Stopping and removing container..."
         
@@ -374,30 +475,22 @@ case "${1:-}" in
         print_success "Container stopped and removed"
         exit 0
         ;;
-    --logs)
+    logs)
         detect_container_runtime
         $CONTAINER_ENGINE logs -f "$CONTAINER_NAME"
         exit 0
         ;;
-    --fetch-catalogs)
-        export FETCH_CATALOGS=true
-        main
-        ;;
-    --no-cache)
-        export BUILD_NO_CACHE=true
-        main
-        ;;
-    --engine)
+    engine)
         detect_container_runtime
         echo "Detected container engine: $CONTAINER_ENGINE"
         exit 0
         ;;
-    --status)
+    status)
         detect_container_runtime
         show_status
         exit 0
         ;;
-    *)
+    main)
         main
         ;;
-esac 
+esac

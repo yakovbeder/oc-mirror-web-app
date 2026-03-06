@@ -1,0 +1,107 @@
+{
+  "generatedAt": "2026-03-06T09:33:35Z",
+  "catalogDataDir": "catalog-data",
+  "summary": {
+    "catalogSnapshots": 15,
+    "catalogSnapshotsWithIssues": 0,
+    "operatorsAudited": 3290,
+    "operatorsWithIssues": 0,
+    "totalIssues": 0,
+    "issueCounts": {}
+  },
+  "notableFindings": {
+    "dellCsm": null
+  },
+  "snapshots": [
+    {
+      "catalogKey": "certified-operator-index:v4.16",
+      "operatorCount": 249,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "certified-operator-index:v4.17",
+      "operatorCount": 251,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "certified-operator-index:v4.18",
+      "operatorCount": 251,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "certified-operator-index:v4.19",
+      "operatorCount": 174,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "certified-operator-index:v4.20",
+      "operatorCount": 161,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "community-operator-index:v4.16",
+      "operatorCount": 288,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "community-operator-index:v4.17",
+      "operatorCount": 290,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "community-operator-index:v4.18",
+      "operatorCount": 294,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "community-operator-index:v4.19",
+      "operatorCount": 290,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "community-operator-index:v4.20",
+      "operatorCount": 286,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "redhat-operator-index:v4.16",
+      "operatorCount": 165,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "redhat-operator-index:v4.17",
+      "operatorCount": 143,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "redhat-operator-index:v4.18",
+      "operatorCount": 152,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "redhat-operator-index:v4.19",
+      "operatorCount": 146,
+      "issues": [],
+      "operatorFindings": []
+    },
+    {
+      "catalogKey": "redhat-operator-index:v4.20",
+      "operatorCount": 150,
+      "issues": [],
+      "operatorFindings": []
+    }
+  ]
+}
