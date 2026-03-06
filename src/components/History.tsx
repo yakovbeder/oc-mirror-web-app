@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
   Card,
   CardBody,
-  CardTitle,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
@@ -20,27 +19,21 @@ import {
   Alert,
   Spinner,
   Title,
-  Split,
-  SplitItem,
   EmptyState,
   EmptyStateBody,
-  Flex,
-  FlexItem,
 } from '@patternfly/react-core';
 import {
   HistoryIcon,
   SearchIcon,
   DownloadIcon,
+  AngleRightIcon,
+  AngleDownIcon,
+  AngleUpIcon,
   CheckCircleIcon,
   TimesCircleIcon,
   StopIcon,
   SyncAltIcon,
   OutlinedClockIcon,
-  LockIcon,
-  LockOpenIcon,
-  PauseIcon,
-  PlayIcon,
-  TrashAltIcon,
   ListIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
@@ -78,8 +71,7 @@ const History: React.FC = () => {
   const [filter, setFilter] = useState('all');
   const [liveLog, setLiveLog] = useState('');
   const [logSource, setLogSource] = useState<EventSource | null>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
+  const operationRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const logRef = useRef<HTMLDivElement>(null);
 
   const fetchHistory = useCallback(async () => {
@@ -118,9 +110,7 @@ const History: React.FC = () => {
       try {
         const es = new EventSource(`/api/operations/${selectedOperation.id}/logstream`);
         es.onmessage = (e) => {
-          if (!isPaused) {
-            setLiveLog((prev) => prev + (e.data ? e.data + '\n' : ''));
-          }
+          setLiveLog((prev) => `${prev}${e.data ? `${e.data}\n` : ''}`);
         };
         es.onerror = () => {
           es.close();
@@ -134,13 +124,55 @@ const History: React.FC = () => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOperation, isPaused]);
+  }, [selectedOperation]);
 
   useEffect(() => {
-    if (autoScroll && logRef.current) {
+    if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [liveLog, autoScroll]);
+  }, [liveLog]);
+
+  const scrollToSelectedOperation = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    if (!selectedOperation) {
+      return;
+    }
+
+    const selectedRow = operationRowRefs.current[selectedOperation.id];
+    if (!selectedRow) {
+      return;
+    }
+
+    const main = document.querySelector('main.pf-v6-c-page__main');
+    if (main instanceof HTMLElement) {
+      const mainRect = main.getBoundingClientRect();
+      const rowRect = selectedRow.getBoundingClientRect();
+      const targetTop = rowRect.top - mainRect.top + main.scrollTop - 16;
+
+      main.scrollTo({
+        top: Math.max(targetTop, 0),
+        behavior,
+      });
+
+      return;
+    }
+
+    selectedRow.scrollIntoView({
+      behavior,
+      block: 'start',
+    });
+  }, [selectedOperation]);
+
+  useEffect(() => {
+    if (!selectedOperation) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollToSelectedOperation('smooth');
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedOperation, scrollToSelectedOperation]);
 
   const fetchOperationDetails = async (operationId: string) => {
     try {
@@ -164,7 +196,19 @@ const History: React.FC = () => {
     }
   };
 
+  const clearSelectedOperation = () => {
+    if (logSource) {
+      logSource.close();
+      setLogSource(null);
+    }
+
+    setSelectedOperation(null);
+    setOperationDetails(null);
+    setLiveLog('');
+  };
+
   const handleOperationSelect = (operation: Operation) => {
+    setOperationDetails(null);
     setSelectedOperation(operation);
     fetchOperationDetails(operation.id);
   };
@@ -207,6 +251,123 @@ const History: React.FC = () => {
     return op.status === filter;
   });
 
+  const renderOperationDetails = () => {
+    if (!selectedOperation) {
+      return null;
+    }
+
+    return (
+      <div style={{ minWidth: 0, paddingTop: '0.5rem' }}>
+        <Title headingLevel="h4" style={{ marginBottom: '1rem' }}>
+          <SearchIcon /> Operation Details
+        </Title>
+
+        <DescriptionList isCompact>
+          <DescriptionListGroup>
+            <DescriptionListTerm>Name</DescriptionListTerm>
+            <DescriptionListDescription>{selectedOperation.name}</DescriptionListDescription>
+          </DescriptionListGroup>
+          <DescriptionListGroup>
+            <DescriptionListTerm>Status</DescriptionListTerm>
+            <DescriptionListDescription>{getStatusLabel(selectedOperation.status)}</DescriptionListDescription>
+          </DescriptionListGroup>
+          <DescriptionListGroup>
+            <DescriptionListTerm>Started</DescriptionListTerm>
+            <DescriptionListDescription>{new Date(selectedOperation.startedAt).toLocaleString()}</DescriptionListDescription>
+          </DescriptionListGroup>
+          {selectedOperation.completedAt && (
+            <DescriptionListGroup>
+              <DescriptionListTerm>Completed</DescriptionListTerm>
+              <DescriptionListDescription>{new Date(selectedOperation.completedAt).toLocaleString()}</DescriptionListDescription>
+            </DescriptionListGroup>
+          )}
+          <DescriptionListGroup>
+            <DescriptionListTerm>Duration</DescriptionListTerm>
+            <DescriptionListDescription>{formatDuration(selectedOperation.duration)}</DescriptionListDescription>
+          </DescriptionListGroup>
+          <DescriptionListGroup>
+            <DescriptionListTerm>Config File</DescriptionListTerm>
+            <DescriptionListDescription>{selectedOperation.configFile}</DescriptionListDescription>
+          </DescriptionListGroup>
+        </DescriptionList>
+
+        {selectedOperation.errorMessage && (
+          <Alert
+            variant="danger"
+            isInline
+            title="Error"
+            style={{ marginTop: '1rem' }}
+          >
+            {selectedOperation.errorMessage}
+          </Alert>
+        )}
+
+        {operationDetails && (
+          <div style={{ marginTop: '1rem' }}>
+            <Title headingLevel="h4" style={{ marginBottom: '0.5rem' }}>
+              Operation Statistics
+            </Title>
+            <DescriptionList isCompact>
+              <DescriptionListGroup>
+                <DescriptionListTerm>Images Mirrored</DescriptionListTerm>
+                <DescriptionListDescription>{operationDetails.imagesMirrored || 0}</DescriptionListDescription>
+              </DescriptionListGroup>
+              <DescriptionListGroup>
+                <DescriptionListTerm>Operators Mirrored</DescriptionListTerm>
+                <DescriptionListDescription>{operationDetails.operatorsMirrored || 0}</DescriptionListDescription>
+              </DescriptionListGroup>
+              <DescriptionListGroup>
+                <DescriptionListTerm>Total Size</DescriptionListTerm>
+                <DescriptionListDescription>{formatFileSize(operationDetails.totalSize)}</DescriptionListDescription>
+              </DescriptionListGroup>
+              <DescriptionListGroup>
+                <DescriptionListTerm>Platform Images</DescriptionListTerm>
+                <DescriptionListDescription>{operationDetails.platformImages || 0}</DescriptionListDescription>
+              </DescriptionListGroup>
+              <DescriptionListGroup>
+                <DescriptionListTerm>Additional Images</DescriptionListTerm>
+                <DescriptionListDescription>{operationDetails.additionalImages || 0}</DescriptionListDescription>
+              </DescriptionListGroup>
+              <DescriptionListGroup>
+                <DescriptionListTerm>Helm Charts</DescriptionListTerm>
+                <DescriptionListDescription>{operationDetails.helmCharts || 0}</DescriptionListDescription>
+              </DescriptionListGroup>
+            </DescriptionList>
+            <Alert
+              variant="info"
+              isInline
+              isPlain
+              title={`Configuration File: ${operationDetails.configFile || selectedOperation.configFile}`}
+              style={{ marginTop: '1rem' }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginTop: '1.5rem' }}>
+          <Title headingLevel="h4" style={{ marginBottom: '0.5rem' }}>
+            <ListIcon /> Log Output
+          </Title>
+          <div ref={logRef} style={{ maxHeight: '320px', overflow: 'auto' }}>
+            <CodeBlock>
+              <CodeBlockCode>{liveLog || 'No log output available...'}</CodeBlockCode>
+            </CodeBlock>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <Button
+            variant="secondary"
+            icon={<AngleUpIcon />}
+            onClick={() => scrollToSelectedOperation('smooth')}
+          >
+            Back to operation
+          </Button>
+        </div>
+
+      </div>
+    );
+  };
+
   const exportHistory = () => {
     const csvContent = [
       ['Operation Name', 'Status', 'Started', 'Duration', 'Config File', 'Error Message'],
@@ -229,10 +390,6 @@ const History: React.FC = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
-
-  const clearLog = () => {
-    setLiveLog('');
   };
 
   if (loading) {
@@ -282,41 +439,74 @@ const History: React.FC = () => {
         </CardBody>
       </Card>
 
-      <Split hasGutter style={{ marginTop: '1rem' }}>
-        <SplitItem isFilled style={{ minWidth: 0 }}>
-          <Card>
-            <CardBody>
-              <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>
-                <ListIcon /> Operations List
-              </Title>
-              {filteredOperations.length === 0 ? (
-                <EmptyState>
-                  <SearchIcon />
-                  <EmptyStateBody>No operations found.</EmptyStateBody>
-                </EmptyState>
-              ) : (
-                <Table aria-label="Operations list">
-                  <Thead>
-                    <Tr>
-                      <Th>Operation</Th>
-                      <Th>Status</Th>
-                      <Th>Started</Th>
-                      <Th>Duration</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {filteredOperations.map((op) => (
+      <Card style={{ marginTop: '1rem', minWidth: 0 }}>
+        <CardBody>
+          <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>
+            <ListIcon /> Operations List
+          </Title>
+          {filteredOperations.length === 0 ? (
+            <EmptyState>
+              <SearchIcon />
+              <EmptyStateBody>No operations found.</EmptyStateBody>
+            </EmptyState>
+          ) : (
+            <Table aria-label="Operations list">
+              <Thead>
+                <Tr>
+                  <Th>Operation</Th>
+                  <Th>Status</Th>
+                  <Th>Started</Th>
+                  <Th>Duration</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {filteredOperations.map((op) => {
+                  const isSelected = selectedOperation?.id === op.id;
+
+                  return (
+                    <Fragment key={op.id}>
                       <Tr
-                        key={op.id}
                         isSelectable
                         isClickable
-                        isRowSelected={selectedOperation?.id === op.id}
-                        onRowClick={() => handleOperationSelect(op)}
+                        isRowSelected={isSelected}
+                        aria-expanded={isSelected}
+                        onRowClick={() => (
+                          isSelected
+                            ? clearSelectedOperation()
+                            : handleOperationSelect(op)
+                        )}
                       >
                         <Td dataLabel="Operation">
-                          <div>
-                            <div style={{ fontWeight: 700 }}>{op.name}</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>{op.configFile}</div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '0.75rem',
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                color: 'var(--pf-v6-global--Color--200)',
+                                display: 'inline-flex',
+                                marginTop: '0.15rem',
+                              }}
+                            >
+                              {isSelected ? <AngleDownIcon /> : <AngleRightIcon />}
+                            </span>
+                            <div>
+                              <div
+                                ref={(element) => {
+                                  operationRowRefs.current[op.id] = element;
+                                }}
+                                style={{ fontWeight: 700, scrollMarginTop: '1rem' }}
+                              >
+                                {op.name}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>
+                                {op.configFile}
+                              </div>
+                            </div>
                           </div>
                         </Td>
                         <Td dataLabel="Status">
@@ -329,160 +519,22 @@ const History: React.FC = () => {
                           <OutlinedClockIcon /> {formatDuration(op.duration)}
                         </Td>
                       </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              )}
-            </CardBody>
-          </Card>
-        </SplitItem>
+                      {isSelected && (
+                        <Tr>
+                          <Td colSpan={4}>
+                            {renderOperationDetails()}
+                          </Td>
+                        </Tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          )}
+        </CardBody>
+      </Card>
 
-        {selectedOperation && (
-          <SplitItem isFilled style={{ minWidth: 0 }}>
-            <Card>
-              <CardBody>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>
-                  <SearchIcon /> Operation Details
-                </Title>
-
-                <DescriptionList isHorizontal>
-                  <DescriptionListGroup>
-                    <DescriptionListTerm>Name</DescriptionListTerm>
-                    <DescriptionListDescription>{selectedOperation.name}</DescriptionListDescription>
-                  </DescriptionListGroup>
-                  <DescriptionListGroup>
-                    <DescriptionListTerm>Status</DescriptionListTerm>
-                    <DescriptionListDescription>{getStatusLabel(selectedOperation.status)}</DescriptionListDescription>
-                  </DescriptionListGroup>
-                  <DescriptionListGroup>
-                    <DescriptionListTerm>Started</DescriptionListTerm>
-                    <DescriptionListDescription>{new Date(selectedOperation.startedAt).toLocaleString()}</DescriptionListDescription>
-                  </DescriptionListGroup>
-                  {selectedOperation.completedAt && (
-                    <DescriptionListGroup>
-                      <DescriptionListTerm>Completed</DescriptionListTerm>
-                      <DescriptionListDescription>{new Date(selectedOperation.completedAt).toLocaleString()}</DescriptionListDescription>
-                    </DescriptionListGroup>
-                  )}
-                  <DescriptionListGroup>
-                    <DescriptionListTerm>Duration</DescriptionListTerm>
-                    <DescriptionListDescription>{formatDuration(selectedOperation.duration)}</DescriptionListDescription>
-                  </DescriptionListGroup>
-                  <DescriptionListGroup>
-                    <DescriptionListTerm>Config File</DescriptionListTerm>
-                    <DescriptionListDescription>{selectedOperation.configFile}</DescriptionListDescription>
-                  </DescriptionListGroup>
-                </DescriptionList>
-
-                {selectedOperation.errorMessage && (
-                  <Alert
-                    variant="danger"
-                    isInline
-                    title="Error"
-                    style={{ marginTop: '1rem' }}
-                  >
-                    {selectedOperation.errorMessage}
-                  </Alert>
-                )}
-
-                {operationDetails && (
-                  <div style={{ marginTop: '1rem' }}>
-                    <Title headingLevel="h4" style={{ marginBottom: '0.5rem' }}>
-                      Operation Statistics
-                    </Title>
-                    <DescriptionList isHorizontal columnModifier={{ default: '2Col' }}>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Images Mirrored</DescriptionListTerm>
-                        <DescriptionListDescription>{operationDetails.imagesMirrored || 0}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Operators Mirrored</DescriptionListTerm>
-                        <DescriptionListDescription>{operationDetails.operatorsMirrored || 0}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Total Size</DescriptionListTerm>
-                        <DescriptionListDescription>{formatFileSize(operationDetails.totalSize)}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Platform Images</DescriptionListTerm>
-                        <DescriptionListDescription>{operationDetails.platformImages || 0}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Additional Images</DescriptionListTerm>
-                        <DescriptionListDescription>{operationDetails.additionalImages || 0}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>Helm Charts</DescriptionListTerm>
-                        <DescriptionListDescription>{operationDetails.helmCharts || 0}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                    </DescriptionList>
-                    <Alert
-                      variant="info"
-                      isInline
-                      isPlain
-                      title={`Configuration File: ${operationDetails.configFile || selectedOperation.configFile}`}
-                      style={{ marginTop: '1rem' }}
-                    />
-                  </div>
-                )}
-
-                <div style={{ marginTop: '1.5rem' }}>
-                  <Flex
-                    justifyContent={{ default: 'justifyContentSpaceBetween' }}
-                    alignItems={{ default: 'alignItemsCenter' }}
-                    style={{ marginBottom: '0.5rem' }}
-                  >
-                    <FlexItem>
-                      <Title headingLevel="h4">
-                        <ListIcon /> Log Output
-                      </Title>
-                    </FlexItem>
-                    <FlexItem>
-                      <Flex spaceItems={{ default: 'spaceItemsSm' }}>
-                        <FlexItem>
-                          <Button
-                            variant={autoScroll ? 'primary' : 'secondary'}
-                            icon={autoScroll ? <LockIcon /> : <LockOpenIcon />}
-                            onClick={() => setAutoScroll(!autoScroll)}
-                            isSmall
-                          >
-                            Auto-scroll
-                          </Button>
-                        </FlexItem>
-                        <FlexItem>
-                          <Button
-                            variant={isPaused ? 'warning' : 'secondary'}
-                            icon={isPaused ? <PlayIcon /> : <PauseIcon />}
-                            onClick={() => setIsPaused(!isPaused)}
-                            isSmall
-                          >
-                            {isPaused ? 'Resume' : 'Pause'}
-                          </Button>
-                        </FlexItem>
-                        <FlexItem>
-                          <Button
-                            variant="secondary"
-                            icon={<TrashAltIcon />}
-                            onClick={clearLog}
-                            isSmall
-                          >
-                            Clear
-                          </Button>
-                        </FlexItem>
-                      </Flex>
-                    </FlexItem>
-                  </Flex>
-                  <div ref={logRef} style={{ maxHeight: '400px', overflow: 'auto' }}>
-                    <CodeBlock>
-                      <CodeBlockCode>{liveLog || 'No log output available...'}</CodeBlockCode>
-                    </CodeBlock>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </SplitItem>
-        )}
-      </Split>
     </div>
   );
 };

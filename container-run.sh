@@ -10,8 +10,8 @@ set -e
 # - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
 # - FETCH_CATALOGS=true -> refresh catalog-data before building
 # - FORCE_CATALOG_REFRESH=true -> pass --force to fetch-catalogs-host.sh
-# - IMAGE_VERSION=4.1 -> set OCI image version label during build
-# - BUILD_VERSION=4.1 -> compatibility alias for IMAGE_VERSION
+# - IMAGE_VERSION=4.2 -> set OCI image version label during build
+# - BUILD_VERSION=4.2 -> compatibility alias for IMAGE_VERSION
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
 FETCH_CATALOGS="${FETCH_CATALOGS:-false}"
 FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-false}"
@@ -328,15 +328,15 @@ show_help() {
     echo "  FETCH_CATALOGS=true         Fetch operator catalogs during build"
     echo "  FORCE_CATALOG_REFRESH=true Force host catalog refetch during build"
     echo "  BUILD_NO_CACHE=true        Disable build cache when building the container image"
-    echo "  IMAGE_VERSION=4.1          Set OCI image version label during build"
-    echo "  BUILD_VERSION=4.1          Compatibility alias for IMAGE_VERSION"
+    echo "  IMAGE_VERSION=4.2          Set OCI image version label during build"
+    echo "  BUILD_VERSION=4.2          Compatibility alias for IMAGE_VERSION"
     echo ""
     echo "Examples:"
     echo "  $0"
     echo "  $0 --build-only"
     echo "  $0 --fetch-catalogs"
     echo "  $0 --fetch-catalogs --force-catalogs"
-    echo "  $0 --build-only --version 4.1"
+    echo "  $0 --build-only --version 4.2"
     echo "  $0 --build-only --fetch-catalogs --force-catalogs --no-cache"
     echo ""
     echo "Container Engine Support:"

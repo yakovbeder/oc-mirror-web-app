@@ -103,7 +103,7 @@ const MirrorOperations: React.FC = () => {
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       console.error('Error fetching logs:', error);
-      setLogs('Error loading logs: ' + (err.response?.data?.message || err.message));
+      setLogs(`Error loading logs: ${err.response?.data?.message || err.message}`);
     }
   }, []);
 
@@ -288,7 +288,7 @@ const MirrorOperations: React.FC = () => {
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       console.error('Error starting operation:', error);
-      addDangerAlert('Failed to start operation: ' + (err.response?.data?.message || err.message));
+      addDangerAlert(`Failed to start operation: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -315,7 +315,7 @@ const MirrorOperations: React.FC = () => {
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       console.error('Error deleting configuration:', error);
-      addDangerAlert('Failed to delete configuration: ' + (err.response?.data?.message || err.message));
+      addDangerAlert(`Failed to delete configuration: ${err.response?.data?.message || err.message}`);
     }
   };
 

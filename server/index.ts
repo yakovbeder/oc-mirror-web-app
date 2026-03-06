@@ -6,7 +6,6 @@ import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import YAML from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
-import tar from 'tar';
 import compression from 'compression';
 import multer from 'multer';
 import { fileURLToPath, pathToFileURL } from 'url';

@@ -61,9 +61,6 @@ import {
   DownloadIcon,
   InfoCircleIcon,
   SaveIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  TimesCircleIcon,
   ArrowRightIcon,
   BundleIcon,
 } from '@patternfly/react-icons';
@@ -439,7 +436,7 @@ const generateDefaultConfigName = (): string => {
 };
 
 const MirrorConfig: React.FC = () => {
-  const { addSuccessAlert, addDangerAlert, addWarningAlert, addInfoAlert } = useAlerts();
+  const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
 
   const [config, setConfig] = useState<ImageSetConfig>({
     kind: 'ImageSetConfiguration',
@@ -863,6 +860,7 @@ const MirrorConfig: React.FC = () => {
           });
         }
       } catch {
+        // Ignore dependency lookups that fail during intermediate form edits.
       }
     }
   };
@@ -2227,7 +2225,7 @@ const MirrorConfig: React.FC = () => {
                         rows={18}
                         resizeOrientation="vertical"
                         aria-label="YAML editor"
-                        style={{ fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace", fontSize: '13px' }}
+                        style={{ fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace', fontSize: '13px' }}
                       />
                     </FormGroup>
                   )}
