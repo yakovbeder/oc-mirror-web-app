@@ -19,8 +19,8 @@ import {
   Alert,
   Spinner,
   Title,
-  Split,
-  SplitItem,
+  Grid,
+  GridItem,
   EmptyState,
   EmptyStateBody,
   Flex,
@@ -35,11 +35,6 @@ import {
   StopIcon,
   SyncAltIcon,
   OutlinedClockIcon,
-  LockIcon,
-  LockOpenIcon,
-  PauseIcon,
-  PlayIcon,
-  TrashAltIcon,
   ListIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
@@ -77,8 +72,6 @@ const History: React.FC = () => {
   const [filter, setFilter] = useState('all');
   const [liveLog, setLiveLog] = useState('');
   const [logSource, setLogSource] = useState<EventSource | null>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   const fetchHistory = useCallback(async () => {
@@ -117,9 +110,7 @@ const History: React.FC = () => {
       try {
         const es = new EventSource(`/api/operations/${selectedOperation.id}/logstream`);
         es.onmessage = (e) => {
-          if (!isPaused) {
-            setLiveLog((prev) => `${prev}${e.data ? `${e.data}\n` : ''}`);
-          }
+          setLiveLog((prev) => `${prev}${e.data ? `${e.data}\n` : ''}`);
         };
         es.onerror = () => {
           es.close();
@@ -133,13 +124,13 @@ const History: React.FC = () => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOperation, isPaused]);
+  }, [selectedOperation]);
 
   useEffect(() => {
-    if (autoScroll && logRef.current) {
+    if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [liveLog, autoScroll]);
+  }, [liveLog]);
 
   const fetchOperationDetails = async (operationId: string) => {
     try {
@@ -161,6 +152,17 @@ const History: React.FC = () => {
         });
       }
     }
+  };
+
+  const clearSelectedOperation = () => {
+    if (logSource) {
+      logSource.close();
+      setLogSource(null);
+    }
+
+    setSelectedOperation(null);
+    setOperationDetails(null);
+    setLiveLog('');
   };
 
   const handleOperationSelect = (operation: Operation) => {
@@ -230,10 +232,6 @@ const History: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const clearLog = () => {
-    setLiveLog('');
-  };
-
   if (loading) {
     return (
       <EmptyState>
@@ -281,9 +279,13 @@ const History: React.FC = () => {
         </CardBody>
       </Card>
 
-      <Split hasGutter style={{ marginTop: '1rem' }}>
-        <SplitItem isFilled style={{ minWidth: 0 }}>
-          <Card>
+      <Grid hasGutter style={{ marginTop: '1rem' }}>
+        <GridItem
+          span={12}
+          lg={selectedOperation ? 4 : 12}
+          style={{ minWidth: 0 }}
+        >
+          <Card style={{ minWidth: 0 }}>
             <CardBody>
               <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>
                 <ListIcon /> Operations List
@@ -310,7 +312,11 @@ const History: React.FC = () => {
                         isSelectable
                         isClickable
                         isRowSelected={selectedOperation?.id === op.id}
-                        onRowClick={() => handleOperationSelect(op)}
+                        onRowClick={() => (
+                          selectedOperation?.id === op.id
+                            ? clearSelectedOperation()
+                            : handleOperationSelect(op)
+                        )}
                       >
                         <Td dataLabel="Operation">
                           <div>
@@ -334,17 +340,30 @@ const History: React.FC = () => {
               )}
             </CardBody>
           </Card>
-        </SplitItem>
+        </GridItem>
 
         {selectedOperation && (
-          <SplitItem isFilled style={{ minWidth: 0 }}>
-            <Card>
+          <GridItem span={12} lg={8} style={{ minWidth: 0 }}>
+            <Card style={{ minWidth: 0 }}>
               <CardBody>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>
-                  <SearchIcon /> Operation Details
-                </Title>
+                <Flex
+                  justifyContent={{ default: 'justifyContentSpaceBetween' }}
+                  alignItems={{ default: 'alignItemsCenter' }}
+                  style={{ marginBottom: '1rem' }}
+                >
+                  <FlexItem>
+                    <Title headingLevel="h3">
+                      <SearchIcon /> Operation Details
+                    </Title>
+                  </FlexItem>
+                  <FlexItem>
+                    <Button variant="link" onClick={clearSelectedOperation}>
+                      Close details
+                    </Button>
+                  </FlexItem>
+                </Flex>
 
-                <DescriptionList isHorizontal>
+                <DescriptionList isHorizontal isCompact>
                   <DescriptionListGroup>
                     <DescriptionListTerm>Name</DescriptionListTerm>
                     <DescriptionListDescription>{selectedOperation.name}</DescriptionListDescription>
@@ -389,7 +408,7 @@ const History: React.FC = () => {
                     <Title headingLevel="h4" style={{ marginBottom: '0.5rem' }}>
                       Operation Statistics
                     </Title>
-                    <DescriptionList isHorizontal columnModifier={{ default: '2Col' }}>
+                    <DescriptionList isHorizontal isCompact columnModifier={{ default: '2Col' }}>
                       <DescriptionListGroup>
                         <DescriptionListTerm>Images Mirrored</DescriptionListTerm>
                         <DescriptionListDescription>{operationDetails.imagesMirrored || 0}</DescriptionListDescription>
@@ -426,51 +445,9 @@ const History: React.FC = () => {
                 )}
 
                 <div style={{ marginTop: '1.5rem' }}>
-                  <Flex
-                    justifyContent={{ default: 'justifyContentSpaceBetween' }}
-                    alignItems={{ default: 'alignItemsCenter' }}
-                    style={{ marginBottom: '0.5rem' }}
-                  >
-                    <FlexItem>
-                      <Title headingLevel="h4">
-                        <ListIcon /> Log Output
-                      </Title>
-                    </FlexItem>
-                    <FlexItem>
-                      <Flex spaceItems={{ default: 'spaceItemsSm' }}>
-                        <FlexItem>
-                          <Button
-                            variant={autoScroll ? 'primary' : 'secondary'}
-                            icon={autoScroll ? <LockIcon /> : <LockOpenIcon />}
-                            onClick={() => setAutoScroll(!autoScroll)}
-                            size="sm"
-                          >
-                            Auto-scroll
-                          </Button>
-                        </FlexItem>
-                        <FlexItem>
-                          <Button
-                            variant={isPaused ? 'warning' : 'secondary'}
-                            icon={isPaused ? <PlayIcon /> : <PauseIcon />}
-                            onClick={() => setIsPaused(!isPaused)}
-                            size="sm"
-                          >
-                            {isPaused ? 'Resume' : 'Pause'}
-                          </Button>
-                        </FlexItem>
-                        <FlexItem>
-                          <Button
-                            variant="secondary"
-                            icon={<TrashAltIcon />}
-                            onClick={clearLog}
-                            size="sm"
-                          >
-                            Clear
-                          </Button>
-                        </FlexItem>
-                      </Flex>
-                    </FlexItem>
-                  </Flex>
+                  <Title headingLevel="h4" style={{ marginBottom: '0.5rem' }}>
+                    <ListIcon /> Log Output
+                  </Title>
                   <div ref={logRef} style={{ maxHeight: '400px', overflow: 'auto' }}>
                     <CodeBlock>
                       <CodeBlockCode>{liveLog || 'No log output available...'}</CodeBlockCode>
@@ -479,9 +456,9 @@ const History: React.FC = () => {
                 </div>
               </CardBody>
             </Card>
-          </SplitItem>
+          </GridItem>
         )}
-      </Split>
+      </Grid>
     </div>
   );
 };
