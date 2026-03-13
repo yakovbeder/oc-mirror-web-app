@@ -29,7 +29,7 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-OCP_VERSIONS=("4.16" "4.17" "4.18" "4.19" "4.20")
+OCP_VERSIONS=("4.16" "4.17" "4.18" "4.19" "4.20" "4.21")
 
 # Catalog types to fetch
 CATALOG_TYPES=(
@@ -43,7 +43,6 @@ CATALOG_DATA_DIR="./catalog-data"
 
 # Configuration
 MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-3}  # Number of parallel catalog fetches
-CATALOG_FRESHNESS_HOURS=${CATALOG_FRESHNESS_HOURS:-24}  # Skip if catalog is newer than this (hours)
 CLEANUP_IMAGES=${CLEANUP_IMAGES:-true}  # Remove images after extraction to save space
 
 # Create output directory
@@ -53,32 +52,9 @@ mkdir -p "$CATALOG_DATA_DIR"
 TOTAL_CATALOGS=0
 SUCCESSFUL_CATALOGS=0
 FAILED_CATALOGS=0
-SKIPPED_CATALOGS=0
 FAILED_LIST=()
 
 print_status "Starting catalog fetch for ${#OCP_VERSIONS[@]} OCP versions..."
-
-# Function to check if catalog is fresh and can be skipped
-is_catalog_fresh() {
-    local catalog_type=$1
-    local ocp_version=$2
-    local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
-    local catalog_info="${catalog_dir}/catalog-info.json"
-    
-    if [ ! -f "$catalog_info" ]; then
-        return 1  # Not fresh (doesn't exist)
-    fi
-    
-    # Check if catalog-info.json is recent enough
-    local catalog_age_seconds=$(( $(date +%s) - $(stat -c %Y "$catalog_info" 2>/dev/null || echo 0) ))
-    local freshness_seconds=$((CATALOG_FRESHNESS_HOURS * 3600))
-    
-    if [ $catalog_age_seconds -lt $freshness_seconds ]; then
-        return 0  # Fresh
-    else
-        return 1  # Stale
-    fi
-}
 
 # Function to extract catalog data from container (based on existing container.sh logic)
 extract_catalog_data() {
@@ -88,12 +64,6 @@ extract_catalog_data() {
     local output_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
     
     print_status "Fetching ${catalog_type} for OCP v${ocp_version}..."
-    
-    # Check if catalog is fresh and can be skipped
-    if is_catalog_fresh "$catalog_type" "$ocp_version"; then
-        print_status "Skipping ${catalog_type} v${ocp_version} (catalog is fresh, less than ${CATALOG_FRESHNESS_HOURS} hours old)"
-        return 0
-    fi
     
     # Create output directory
     mkdir -p "$output_dir"
@@ -259,12 +229,13 @@ PY
     print_status "Processing ${#CATALOG_JOBS[@]} catalogs with up to ${MAX_PARALLEL_JOBS} parallel jobs..."
     
     # Export functions for background jobs
-    export -f extract_catalog_data process_catalog_data is_catalog_fresh
+    export -f extract_catalog_data process_catalog_data
     export -f print_status print_success print_warning print_error
-    export CATALOG_DATA_DIR CATALOG_FRESHNESS_HOURS CLEANUP_IMAGES
+    export CATALOG_DATA_DIR CLEANUP_IMAGES
     
     # Use background jobs for parallel processing
-    local active_jobs=0
+    # Track PIDs explicitly (avoids jobs -p in subshell, which is unreliable on macOS bash 3.2)
+    local job_pids=()
     local job_num=0
     local results_file=$(mktemp)
     
@@ -293,39 +264,27 @@ PY
         job_num=$((job_num + 1))
         
         # Wait for slot if we've reached max parallel jobs
-        while [ $active_jobs -ge "$MAX_PARALLEL_JOBS" ]; do
-            # Wait for any background job to finish (bash 4.3+)
-            if command -v wait >/dev/null 2>&1; then
-                # Try wait -n (bash 4.3+), fallback to polling
-                wait -n 2>/dev/null && active_jobs=$((active_jobs - 1)) || {
-                    sleep 1
-                    # Check which jobs finished
-                    for pid in $(jobs -p); do
-                        if ! kill -0 "$pid" 2>/dev/null; then
-                            wait "$pid" 2>/dev/null
-                            active_jobs=$((active_jobs - 1))
-                        fi
-                    done
-                }
-            else
-                sleep 1
-                # Check which jobs finished
-                for pid in $(jobs -p); do
-                    if ! kill -0 "$pid" 2>/dev/null; then
-                        wait "$pid" 2>/dev/null
-                        active_jobs=$((active_jobs - 1))
-                    fi
-                done
-            fi
+        while [ ${#job_pids[@]} -ge "$MAX_PARALLEL_JOBS" ]; do
+            # Poll for finished jobs (portable: works on macOS bash 3.2)
+            for i in "${!job_pids[@]}"; do
+                pid=${job_pids[$i]}
+                if ! kill -0 "$pid" 2>/dev/null; then
+                    wait "$pid" 2>/dev/null
+                    unset 'job_pids[i]'
+                    job_pids=("${job_pids[@]}")
+                    break
+                fi
+            done
+            sleep 1
         done
         
         # Start job in background
         process_catalog_job "$catalog_type" "$ocp_version" "$job_num" &
-        active_jobs=$((active_jobs + 1))
+        job_pids+=($!)
     done
     
     # Wait for all remaining jobs
-    for pid in $(jobs -p); do
+    for pid in "${job_pids[@]}"; do
         wait "$pid" 2>/dev/null
     done
     
@@ -337,8 +296,6 @@ PY
             elif [[ "$result_line" == FAILED:* ]]; then
                 FAILED_CATALOGS=$((FAILED_CATALOGS + 1))
                 FAILED_LIST+=("${result_line#FAILED:}")
-            elif [[ "$result_line" == SKIPPED:* ]]; then
-                SKIPPED_CATALOGS=$((SKIPPED_CATALOGS + 1))
             fi
         done < "$results_file"
     fi
@@ -392,9 +349,6 @@ EOF
     local total_deps=$(jq '[.[] | keys | length] | add // 0' "${CATALOG_DATA_DIR}/dependencies.json" 2>/dev/null || echo "0")
     print_success "Created master dependencies.json with dependencies for $total_deps operators"
     
-    # Calculate final statistics
-    local processed_catalogs=$((SUCCESSFUL_CATALOGS + FAILED_CATALOGS + SKIPPED_CATALOGS))
-    
     print_success "Catalog fetch process completed!"
     print_status "Catalog data available in: $CATALOG_DATA_DIR"
     
@@ -404,18 +358,11 @@ EOF
     echo "  Catalog Fetch Summary"
     echo "=========================================="
     echo ""
-    local progress_percent=0
-    if [ $TOTAL_CATALOGS -gt 0 ]; then
-        local processed=$((SUCCESSFUL_CATALOGS + FAILED_CATALOGS + SKIPPED_CATALOGS))
-        progress_percent=$((processed * 100 / TOTAL_CATALOGS))
-    fi
     
     echo "Statistics:"
     echo "  Total catalogs: ${TOTAL_CATALOGS}"
     echo "  Successful: ${SUCCESSFUL_CATALOGS}"
     echo "  Failed: ${FAILED_CATALOGS}"
-    echo "  Skipped (fresh): ${SKIPPED_CATALOGS}"
-    echo "  Progress: ${progress_percent}%"
     echo ""
     
     if [ ${#FAILED_LIST[@]} -gt 0 ]; then
@@ -439,7 +386,7 @@ EOF
         done
         echo ""
     done
-    
+
     # Exit with error if any catalogs failed
     if [ $FAILED_CATALOGS -gt 0 ]; then
         exit 1
@@ -454,16 +401,8 @@ parse_arguments() {
                 MAX_PARALLEL_JOBS="$2"
                 shift 2
                 ;;
-            --freshness-hours)
-                CATALOG_FRESHNESS_HOURS="$2"
-                shift 2
-                ;;
             --no-cleanup-images)
                 CLEANUP_IMAGES=false
-                shift
-                ;;
-            --force)
-                CATALOG_FRESHNESS_HOURS=0  # Force refresh all catalogs
                 shift
                 ;;
             --help|-h)
@@ -471,20 +410,16 @@ parse_arguments() {
                 echo ""
                 echo "Options:"
                 echo "  --parallel N              Number of parallel catalog fetches (default: 3)"
-                echo "  --freshness-hours N       Skip catalogs newer than N hours (default: 24)"
-                echo "  --force                   Force refresh all catalogs (ignore freshness)"
                 echo "  --no-cleanup-images       Don't remove images after extraction"
                 echo "  --help, -h                Show this help message"
                 echo ""
                 echo "Environment Variables:"
                 echo "  MAX_PARALLEL_JOBS         Same as --parallel"
-                echo "  CATALOG_FRESHNESS_HOURS   Same as --freshness-hours"
                 echo "  CLEANUP_IMAGES           Set to 'false' to disable image cleanup"
                 echo ""
                 echo "Examples:"
-                echo "  $0                        # Use defaults (3 parallel, 24h freshness)"
+                echo "  $0                        # Use defaults (3 parallel)"
                 echo "  $0 --parallel 5           # Use 5 parallel jobs"
-                echo "  $0 --force                # Force refresh all catalogs"
                 echo "  $0 --no-cleanup-images    # Keep images after extraction"
                 exit 0
                 ;;

@@ -474,7 +474,7 @@ def normalize_dependencies_map(dependencies: dict[str, Any]) -> dict[str, list[d
 
 def build_markdown_report(report: dict[str, Any]) -> str:
     lines: list[str] = []
-    lines.append("# Fetch Catalogs Audit Report")
+    lines.append("# Fetch Catalogs Metadata Audit Report")
     lines.append("")
     lines.append(f"Generated: {report['generatedAt']}")
     lines.append(f"Catalog data: `{report['catalogDataDir']}`")

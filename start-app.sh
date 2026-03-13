@@ -11,9 +11,16 @@ cd "${SCRIPT_DIR}"
 # Configuration
 IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
 CONTAINER_NAME="oc-mirror-web-app"
-WEB_PORT="3000"
+DEFAULT_WEB_PORT="3000"
 CONTAINER_PORT="3001"
 DATA_DIR="data"
+
+if [ -n "${WEB_PORT:-}" ]; then
+    WEB_PORT_WAS_SET="true"
+else
+    WEB_PORT_WAS_SET="false"
+    WEB_PORT="$DEFAULT_WEB_PORT"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -80,6 +87,73 @@ check_container_runtime() {
     print_success "$CONTAINER_ENGINE is available and running"
 }
 
+port_is_in_use() {
+    local port="$1"
+
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+        return $?
+    fi
+
+    if command -v nc >/dev/null 2>&1; then
+        nc -z 127.0.0.1 "$port" >/dev/null 2>&1
+        return $?
+    fi
+
+    return 1
+}
+
+find_available_port() {
+    local candidate_port="$1"
+
+    while port_is_in_use "$candidate_port"; do
+        candidate_port=$((candidate_port + 1))
+
+        if [ "$candidate_port" -gt 65535 ]; then
+            return 1
+        fi
+    done
+
+    echo "$candidate_port"
+}
+
+ensure_available_web_port() {
+    if ! port_is_in_use "$WEB_PORT"; then
+        return 0
+    fi
+
+    if [ "$WEB_PORT_WAS_SET" = "true" ]; then
+        print_error "Requested WEB_PORT $WEB_PORT is already in use"
+        print_error "Choose another port, for example: WEB_PORT=3002 ./start-app.sh --start"
+        exit 1
+    fi
+
+    local replacement_port
+    replacement_port="$(find_available_port "$((WEB_PORT + 1))")" || {
+        print_error "Unable to find a free host port for the web UI"
+        exit 1
+    }
+
+    print_warning "Host port $WEB_PORT is already in use. Using port $replacement_port instead."
+    WEB_PORT="$replacement_port"
+}
+
+get_running_web_port() {
+    if ! is_container_running; then
+        return 1
+    fi
+
+    local published_port
+    published_port="$($CONTAINER_ENGINE port "$CONTAINER_NAME" "$CONTAINER_PORT/tcp" 2>/dev/null | awk -F: 'NR==1 {print $NF}')"
+
+    if [ -n "$published_port" ]; then
+        echo "$published_port"
+        return 0
+    fi
+
+    return 1
+}
+
 # Check if container is running
 is_container_running() {
     $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"
@@ -121,31 +195,7 @@ check_pull_secret() {
     print_success "Found pull secret at ${pull_secret_path}"
 }
 
-# Fix directory permissions for container user
-fix_permissions() {
-    print_status "Ensuring data directories are writable by container user (UID 1000)..."
-
-    local data_owner
-    data_owner=$(stat -c '%u' "${DATA_DIR}/" 2>/dev/null || echo "unknown")
-
-    if [ "$data_owner" = "1000" ]; then
-        print_success "Directories already owned by container user (UID 1000)"
-        return 0
-    fi
-
-    if chown -R 1000:1000 "${DATA_DIR}/" 2>/dev/null; then
-        chmod -R 775 "${DATA_DIR}/" 2>/dev/null || true
-        print_success "Ownership set to UID 1000 (node user)"
-    elif sudo chown -R 1000:1000 "${DATA_DIR}/" 2>/dev/null; then
-        sudo chmod -R 775 "${DATA_DIR}/" 2>/dev/null || true
-        print_success "Ownership set to UID 1000 with sudo"
-    else
-        print_warning "Could not change host ownership. The container entrypoint will fix permissions as root."
-        print_warning "If problems persist, run: sudo chown -R 1000:1000 ${DATA_DIR}/"
-    fi
-}
-
-# Create data directories
+# Create data directories and ensure they are writable by both the host user and the container (UID 1000)
 create_data_directories() {
     print_status "Ensuring data directories exist..."
 
@@ -155,10 +205,19 @@ create_data_directories() {
         "$DATA_DIR/logs" \
         "$DATA_DIR/cache" \
         "$DATA_DIR/mirrors/default" \
-        "$DATA_DIR/mirrors/custom"
+    2>/dev/null || {
+        print_status "Fixing data/ permissions for directory creation..."
+        chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR"
+        mkdir -p \
+            "$DATA_DIR/configs" \
+            "$DATA_DIR/operations" \
+            "$DATA_DIR/logs" \
+            "$DATA_DIR/cache" \
+            "$DATA_DIR/mirrors/default"
+    }
 
-    print_success "Data directories are ready"
-    fix_permissions
+    chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR" 2>/dev/null || true
+    print_success "Data directories are ready (world-writable for container compatibility)"
 }
 
 # Pull image
@@ -179,32 +238,71 @@ pull_image() {
 # Run container
 run_container() {
     local image_tag="${IMAGE_NAME}:latest-${ARCH}"
-    
-    print_status "Starting container: $CONTAINER_NAME"
-    print_status "Image: $image_tag"
-    print_status "Web UI: http://localhost:$WEB_PORT"
-    print_status "API: http://localhost:$WEB_PORT/api"
-    
-    $CONTAINER_ENGINE run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$WEB_PORT:$CONTAINER_PORT" \
-        -v "$(pwd)/$DATA_DIR:/app/data:z" \
-        -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
-        -e NODE_ENV=production \
-        -e PORT="$CONTAINER_PORT" \
-        -e STORAGE_DIR=/app/data \
-        -e OC_MIRROR_CACHE_DIR=/app/data/cache \
-        -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
-        -e OC_MIRROR_AUTHFILE=/app/pull-secret.json \
-        --restart unless-stopped \
-        "$image_tag"
-    
-    if [ $? -eq 0 ]; then
-        print_success "Container started successfully"
-    else
+
+    local requested_port="$WEB_PORT"
+    local bind_retry_limit=10
+    local bind_attempt=1
+
+    while [ "$bind_attempt" -le "$bind_retry_limit" ]; do
+        local run_output
+
+        print_status "Starting container: $CONTAINER_NAME"
+        print_status "Image: $image_tag"
+        print_status "Web UI: http://localhost:$WEB_PORT"
+        print_status "API: http://localhost:$WEB_PORT/api"
+
+        set +e
+        run_output="$($CONTAINER_ENGINE run -d \
+            --name "$CONTAINER_NAME" \
+            -p "$WEB_PORT:$CONTAINER_PORT" \
+            -v "$(pwd)/$DATA_DIR:/app/data:z" \
+            -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
+            -e NODE_ENV=production \
+            -e PORT="$CONTAINER_PORT" \
+            -e STORAGE_DIR=/app/data \
+            -e OC_MIRROR_CACHE_DIR=/app/data/cache \
+            -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
+            -e OC_MIRROR_AUTHFILE=/app/pull-secret.json \
+            --restart unless-stopped \
+            "$image_tag" 2>&1)"
+        local run_status=$?
+        set -e
+
+        if [ "$run_status" -eq 0 ]; then
+            echo "$run_output"
+            print_success "Container started successfully"
+            return 0
+        fi
+
+        if container_exists; then
+            $CONTAINER_ENGINE rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        fi
+
+        if echo "$run_output" | grep -qiE 'address already in use|port is already allocated'; then
+            if [ "$WEB_PORT_WAS_SET" = "true" ]; then
+                print_error "Requested WEB_PORT $WEB_PORT is unavailable to Podman"
+                print_error "Choose another port, for example: WEB_PORT=3002 ./start-app.sh --start"
+                exit 1
+            fi
+
+            if [ "$bind_attempt" -eq "$bind_retry_limit" ]; then
+                print_error "Failed to find a usable host port after $bind_retry_limit attempts starting at $requested_port"
+                exit 1
+            fi
+
+            print_warning "Podman could not bind host port $WEB_PORT. Trying the next available port..."
+            WEB_PORT="$(find_available_port "$((WEB_PORT + 1))")" || {
+                print_error "Unable to find a free host port for the web UI"
+                exit 1
+            }
+            bind_attempt=$((bind_attempt + 1))
+            continue
+        fi
+
+        echo "$run_output"
         print_error "Failed to start container"
         exit 1
-    fi
+    done
 }
 
 # Show status
@@ -215,6 +313,12 @@ show_status() {
         return 0
     fi
 
+    local active_web_port
+    active_web_port="$(get_running_web_port || true)"
+    if [ -z "$active_web_port" ]; then
+        active_web_port="$WEB_PORT"
+    fi
+
     echo ""
     echo "=========================================="
     echo "  OC Mirror v2 Web Application"
@@ -222,8 +326,8 @@ show_status() {
     echo ""
     print_success "Application is running!"
     echo ""
-    echo "🌐 Web Interface: http://localhost:$WEB_PORT"
-    echo "🔧 API Server: http://localhost:$WEB_PORT/api (proxied through web interface)"
+    echo "🌐 Web Interface: http://localhost:$active_web_port"
+    echo "🔧 API Server: http://localhost:$active_web_port/api (proxied through web interface)"
     echo ""
     echo "📁 Data Directory: $(pwd)/$DATA_DIR"
     echo "📦 Mirror Storage: $(pwd)/$DATA_DIR/mirrors/default → /app/data/mirrors/default (persistent)"
@@ -279,8 +383,12 @@ main() {
             if is_container_running; then
                 print_warning "Container is already running. Stopping it first..."
                 stop_container
+            elif container_exists; then
+                print_warning "Removing stale container: $CONTAINER_NAME"
+                $CONTAINER_ENGINE rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
             fi
-            
+
+            ensure_available_web_port
             create_data_directories
             pull_image
             run_container
@@ -307,6 +415,7 @@ main() {
             check_pull_secret
             stop_container
             sleep 2
+            ensure_available_web_port
             create_data_directories
             pull_image
             run_container
@@ -332,6 +441,9 @@ main() {
             echo "  --status  - Show container status"
             echo "  --logs    - Show container logs"
             echo "  --help, -h - Show this help message"
+            echo ""
+            echo "Environment:"
+            echo "  WEB_PORT  - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
             exit 0
             ;;
         *)

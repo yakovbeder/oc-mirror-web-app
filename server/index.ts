@@ -138,7 +138,6 @@ async function ensureDirectories(): Promise<void> {
     CACHE_DIR,
     MIRROR_BASE_DIR,
     DEFAULT_MIRROR_DIR,
-    CUSTOM_MIRROR_DIR,
   ];
   for (const dir of dirs) {
     try {
@@ -407,7 +406,7 @@ async function queryOperatorCatalog(catalogUrl: string): Promise<{ name: string 
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       const catalogType = getCatalogNameFromUrl(catalogUrl);
-      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
+      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
       const key = `${catalogType}:${catalogVersion}`;
       
       if (catalogData.operators[key]) {
@@ -427,7 +426,7 @@ async function queryOperatorCatalog(catalogUrl: string): Promise<{ name: string 
 async function queryOperatorChannels(catalogUrl: string, operatorName: string): Promise<(string | { name: string })[]> {
   try {
     const catalogType = getCatalogNameFromUrl(catalogUrl);
-    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
+    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
 
     const actualChannels = await getActualChannelsFromCatalog(catalogType, catalogVersion, operatorName);
     if (actualChannels && actualChannels.length > 0) {
@@ -990,7 +989,7 @@ app.delete('/api/config/delete/:filename', async (req: Request, res: Response) =
 app.get('/api/channels', async (req: Request, res: Response) => {
   try {
     const channels = [
-      'stable-4.16', 'stable-4.17', 'stable-4.18', 'stable-4.19', 'stable-4.20'
+      'stable-4.16', 'stable-4.17', 'stable-4.18', 'stable-4.19', 'stable-4.20', 'stable-4.21'
     ];
     res.json(channels);
   } catch (error: any) {
@@ -1042,7 +1041,7 @@ app.get('/api/operators', async (req: Request, res: Response) => {
       const catalogData = await loadPreFetchedCatalogData();
       if (catalogData) {
         const catalogType = getCatalogNameFromUrl(catalog as string);
-        const catalogVersion = (catalog as string).includes(':') ? (catalog as string).split(':')[1] : 'v4.20';
+        const catalogVersion = (catalog as string).includes(':') ? (catalog as string).split(':')[1] : 'v4.21';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1341,7 +1340,7 @@ app.get('/api/operators/:operator/versions', async (req: Request, res: Response)
     if (catalogData) {
       if (catalog) {
         const catalogType = getCatalogNameFromUrl(catalog);
-        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.20';
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.21';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1378,7 +1377,7 @@ app.get('/api/operator-channels/:operator', async (req: Request, res: Response) 
     if (catalogData) {
       if (catalogUrl) {
         const catalogType = getCatalogNameFromUrl(catalogUrl);
-        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.20';
+        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
         const key = `${catalogType}:${catalogVersion}`;
         
         const operators = catalogData.operators[key];
@@ -1483,7 +1482,7 @@ app.get('/api/operators/:operator/dependencies', async (req: Request, res: Respo
 
     if (catalogUrl) {
       catalogType = getCatalogNameFromUrl(catalogUrl as string);
-      catalogVersion = (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.19';
+      catalogVersion = (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.21';
       
       dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
     } else {

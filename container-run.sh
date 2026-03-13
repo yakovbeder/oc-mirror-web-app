@@ -8,14 +8,17 @@ set -e
 
 # Optional behavior flags (can be set via env vars or script args)
 # - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
-# - FETCH_CATALOGS=true -> refresh catalog-data before building
-# - FORCE_CATALOG_REFRESH=true -> pass --force to fetch-catalogs-host.sh
+# - FETCH_CATALOGS=true -> always refresh catalog-data before building
+# - FORCE_CATALOG_REFRESH=true -> legacy alias for FETCH_CATALOGS=true
 # - IMAGE_VERSION=4.2 -> set OCI image version label during build
 # - BUILD_VERSION=4.2 -> compatibility alias for IMAGE_VERSION
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
 FETCH_CATALOGS="${FETCH_CATALOGS:-false}"
-FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-false}"
 IMAGE_VERSION="${IMAGE_VERSION:-${BUILD_VERSION:-}}"
+
+if [ "${FORCE_CATALOG_REFRESH:-false}" = "true" ]; then
+    FETCH_CATALOGS="true"
+fi
 
 # Image name (use localhost/ prefix to prevent Podman from searching registries)
 IMAGE_NAME="localhost/oc-mirror-web-app"
@@ -87,108 +90,52 @@ check_container_runtime() {
     print_success "$CONTAINER_ENGINE is available and running"
 }
 
-# Fix directory permissions for container user (UID 1000 - node user)
-# The entrypoint runs as root and handles permissions inside the container,
-# but we also do a best-effort fix on the host to avoid startup errors.
-fix_permissions() {
-    print_status "Ensuring data directories are writable by container user (UID 1000)..."
+# Create necessary directories and make them world-writable so both the
+# host user and the container user (UID 1000) can read/write without chown.
+create_directories() {
+    print_status "Checking data directories..."
 
-    local data_owner
-    data_owner=$(stat -c '%u' data/ 2>/dev/null || echo "unknown")
+    mkdir -p \
+        data/configs \
+        data/operations \
+        data/logs \
+        data/cache \
+        data/mirrors/default \
+    2>/dev/null || {
+        print_status "Fixing data/ permissions for directory creation..."
+        chmod -R 777 data/ 2>/dev/null || sudo chmod -R 777 data/
+        mkdir -p \
+            data/configs \
+            data/operations \
+            data/logs \
+            data/cache \
+            data/mirrors/default
+    }
 
-    if [ "$data_owner" = "1000" ]; then
-        print_success "Directories already owned by container user (UID 1000)"
+    chmod -R 777 data/ 2>/dev/null || sudo chmod -R 777 data/ 2>/dev/null || true
+    print_success "Data directories are ready (world-writable for container compatibility)"
+}
+
+# Fetch catalogs on host when explicitly requested.
+fetch_catalogs() {
+    if [ "$FETCH_CATALOGS" != "true" ]; then
+        print_status "Skipping catalog fetch (using existing catalog data)"
         return 0
     fi
 
-    # Best-effort: try chown first, then chmod as fallback
-    if chown -R 1000:1000 data/ 2>/dev/null; then
-        chmod -R 775 data/ 2>/dev/null || true
-        print_success "Ownership set to UID 1000 (node user)"
-    elif sudo chown -R 1000:1000 data/ 2>/dev/null; then
-        sudo chmod -R 775 data/ 2>/dev/null || true
-        print_success "Ownership set to UID 1000 with sudo"
+    print_status "Fetching operator catalogs (this may take several minutes)..."
+
+    if [ -f "fetch-catalogs-host.sh" ]; then
+        chmod +x fetch-catalogs-host.sh
+        if ./fetch-catalogs-host.sh; then
+            print_success "Catalog fetch completed successfully"
+        else
+            print_warning "Catalog fetch failed; continuing with existing catalog-data if present"
+        fi
     else
-        print_warning "Could not change host ownership. The container entrypoint will fix permissions as root."
-        print_warning "If problems persist: sudo chown -R 1000:1000 data/"
+        print_warning "Catalog fetch script not found; continuing without refreshing catalog-data"
     fi
 }
-
-# Create necessary directories
-create_directories() {
-    print_status "Checking data directories..."
-    
-    # Create directories if they don't exist
-    if [ ! -d "data" ]; then
-        print_status "Creating data directory structure..."
-        mkdir -p data/configs
-        mkdir -p data/operations
-        mkdir -p data/logs
-        mkdir -p data/cache
-    else
-        print_success "Data directory already exists"
-    fi
-    
-    # Create default mirror directory in mounted volume (persistent)
-    if [ ! -d "data/mirrors" ]; then
-        print_status "Creating mirror storage base directory..."
-        mkdir -p data/mirrors
-        chmod -R 777 data/mirrors 2>/dev/null || true
-        print_success "Created data/mirrors (persistent mirror location - survives container restarts)"
-    else
-        print_success "Mirror storage directory already exists"
-        chmod -R 777 data/mirrors 2>/dev/null || true
-    fi
-    
-    # Ensure default subdirectory exists
-    if [ ! -d "data/mirrors/default" ]; then
-        mkdir -p data/mirrors/default
-        chmod -R 777 data/mirrors/default 2>/dev/null || true
-    fi
-    
-    # Fix permissions for container user
-    fix_permissions
-}
-
-    # Fetch catalogs on host (if explicitly requested)
-    fetch_catalogs() {
-        if [ "$FETCH_CATALOGS" != "true" ]; then
-            print_status "Skipping catalog fetch (using existing catalog data)"
-            return 0
-        fi
-
-        print_status "Fetching operator catalogs (this may take several minutes)..."
-
-        local fetch_args=()
-        if [ "$FORCE_CATALOG_REFRESH" = "true" ]; then
-            print_status "Forcing catalog refresh via fetch-catalogs-host.sh --force"
-            fetch_args+=(--force)
-        elif [ -d "catalog-data" ] && [ -f "catalog-data/catalog-index.json" ]; then
-            local catalog_age=$(( $(date +%s) - $(stat -c %Y catalog-data/catalog-index.json 2>/dev/null || echo 0) ))
-            local max_age=$((7 * 24 * 3600))  # 7 days in seconds
-            
-            if [ $catalog_age -lt $max_age ]; then
-                print_success "Using existing catalog data (less than 7 days old)"
-                return 0
-            else
-                print_status "Existing catalog data is older than 7 days, refreshing..."
-            fi
-        else
-            print_status "No catalog data found, fetching operator catalogs..."
-        fi
-
-        # Run the host-side catalog fetch script
-        if [ -f "fetch-catalogs-host.sh" ]; then
-            chmod +x fetch-catalogs-host.sh
-            if ./fetch-catalogs-host.sh "${fetch_args[@]}"; then
-                print_success "Catalog fetch completed successfully"
-            else
-                print_warning "Catalog fetch failed, will use fallback data"
-            fi
-        else
-            print_warning "Catalog fetch script not found, will use fallback data"
-        fi
-    }
 
 # Build the container image
 build_image() {
@@ -319,14 +266,14 @@ show_help() {
     echo "  --logs              Show container logs"
     echo "  --status            Show container status"
     echo "  --engine            Show detected container engine"
-    echo "  --fetch-catalogs    Fetch operator catalogs during build"
-    echo "  --force-catalogs    Force host catalog refetch and ignore freshness"
+    echo "  --fetch-catalogs    Always fetch operator catalogs during build"
+    echo "  --force-catalogs    Legacy alias for --fetch-catalogs"
     echo "  --no-cache          Rebuild the container image without using cache"
     echo "  --version VERSION   Set OCI image version label during build"
     echo ""
     echo "Environment Variables:"
-    echo "  FETCH_CATALOGS=true         Fetch operator catalogs during build"
-    echo "  FORCE_CATALOG_REFRESH=true Force host catalog refetch during build"
+    echo "  FETCH_CATALOGS=true         Always fetch operator catalogs during build"
+    echo "  FORCE_CATALOG_REFRESH=true Legacy alias for FETCH_CATALOGS=true"
     echo "  BUILD_NO_CACHE=true        Disable build cache when building the container image"
     echo "  IMAGE_VERSION=4.2          Set OCI image version label during build"
     echo "  BUILD_VERSION=4.2          Compatibility alias for IMAGE_VERSION"
@@ -335,17 +282,16 @@ show_help() {
     echo "  $0"
     echo "  $0 --build-only"
     echo "  $0 --fetch-catalogs"
-    echo "  $0 --fetch-catalogs --force-catalogs"
     echo "  $0 --build-only --version 4.2"
-    echo "  $0 --build-only --fetch-catalogs --force-catalogs --no-cache"
+    echo "  $0 --build-only --fetch-catalogs --no-cache"
     echo ""
     echo "Container Engine Support:"
     echo "  - Podman (required)"
     echo ""
     echo "Catalog Fetching:"
     echo "  By default, the build process skips catalog fetching for faster builds."
-    echo "  Use --fetch-catalogs to refresh when the existing snapshot is stale."
-    echo "  Use --force-catalogs to force a full host-side refetch before the image build."
+    echo "  Use --fetch-catalogs to always run the host-side catalog fetch before the image build."
+    echo "  --force-catalogs remains accepted as a legacy alias."
 }
 
 # Build image without running the container
@@ -422,7 +368,6 @@ parse_arguments() {
                 ;;
             --force-catalogs)
                 FETCH_CATALOGS=true
-                FORCE_CATALOG_REFRESH=true
                 shift
                 ;;
             --no-cache)
