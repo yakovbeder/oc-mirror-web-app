@@ -10,6 +10,7 @@ import compression from 'compression';
 import multer from 'multer';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getChannelObjectsFromGeneratedOperator } from './catalogChannels.js';
+import { isPathAvailable } from './pathAvailability.js';
 
 const fsp = fs.promises;
 
@@ -807,10 +808,8 @@ app.get('/api/system/paths', async (req: Request, res: Response) => {
 
     const availablePaths = [];
     for (const pathInfo of commonPaths) {
-    try {
-      await fsp.mkdir(pathInfo.path, { recursive: true });
-      await fsp.access(pathInfo.path, fs.constants.W_OK);
-        pathInfo.available = true;
+      try {
+        pathInfo.available = await isPathAvailable(pathInfo.path);
       } catch {
         pathInfo.available = false;
       }

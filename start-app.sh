@@ -122,6 +122,15 @@ find_available_port() {
     echo "$candidate_port"
 }
 
+resolve_image_tag() {
+    if [ "$IMAGE_NAME_WAS_SET" = "true" ] && $CONTAINER_ENGINE image exists "${IMAGE_NAME}:latest" 2>/dev/null; then
+        echo "${IMAGE_NAME}:latest"
+        return 0
+    fi
+
+    echo "${IMAGE_NAME}:latest-${ARCH}"
+}
+
 ensure_available_web_port() {
     if ! port_is_in_use "$WEB_PORT"; then
         return 0
@@ -227,12 +236,15 @@ create_data_directories() {
 
 # Pull image
 pull_image() {
-    if [ "$IMAGE_NAME_WAS_SET" = "true" ] && $CONTAINER_ENGINE image exists "${IMAGE_NAME}:latest-${ARCH}" 2>/dev/null; then
+    local image_tag
+    image_tag="$(resolve_image_tag)"
+
+    if [ "$IMAGE_NAME_WAS_SET" = "true" ] && $CONTAINER_ENGINE image exists "$image_tag" 2>/dev/null; then
         print_success "Using local image (IMAGE_NAME override), skipping pull"
         return 0
     fi
 
-    local image_tag="${IMAGE_NAME}:latest-${ARCH}"
+    image_tag="${IMAGE_NAME}:latest-${ARCH}"
     print_status "Pulling image: $image_tag"
     
     $CONTAINER_ENGINE pull $image_tag
@@ -247,7 +259,8 @@ pull_image() {
 
 # Run container
 run_container() {
-    local image_tag="${IMAGE_NAME}:latest-${ARCH}"
+    local image_tag
+    image_tag="$(resolve_image_tag)"
 
     local requested_port="$WEB_PORT"
     local bind_retry_limit=10
