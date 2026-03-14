@@ -4,7 +4,7 @@
 
 ## Overview
 
-The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift Container Platform mirroring operations. In default direct/local runs, the API is available at `http://localhost:3001/api/`. When the app is started with `./start-app.sh`, use the host port reported by the script and append `/api`.
+The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift Container Platform mirroring operations. The UI and API are served on the same port. Use the URL printed by the startup script and append `/api`.
 
 ### Key Features
 - **Archive Size Control**: Optional `archiveSize` parameter to limit archive file sizes (in GiB)
@@ -15,10 +15,10 @@ The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift C
 
 ## Base URL
 ```
-http://localhost:3001/api
+http://localhost:<port>/api
 ```
 
-For containerized runs started via `./start-app.sh`, the frontend proxies the API on the selected host port, for example `http://localhost:3000/api` or another port if `3000` is already occupied.
+The default port is `3000`. All startup scripts (`./start-app.sh`, `./container-run.sh`) automatically select another free port if `3000` is already occupied and print the actual URL.
 
 ## Authentication
 Currently, the API does not require authentication. All endpoints are accessible without credentials.
@@ -454,7 +454,7 @@ Get dependencies for a specific operator.
 
 **Example Request:**
 ```bash
-curl "http://localhost:3001/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.21"
+curl "http://localhost:3000/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.21"
 ```
 
 **Response:**
@@ -779,26 +779,26 @@ Both endpoints can be used by load balancers, monitoring systems, and container 
 
 ```bash
 # Get system information
-curl http://localhost:3001/api/system/info
+curl http://localhost:3000/api/system/info
 
 # Health check
-curl http://localhost:3001/api/health
+curl http://localhost:3000/api/health
 
 # Get system paths
-curl http://localhost:3001/api/system/paths
+curl http://localhost:3000/api/system/paths
 
 # Start an operation with default mirror destination
-curl -X POST http://localhost:3001/api/operations/start \
+curl -X POST http://localhost:3000/api/operations/start \
   -H "Content-Type: application/json" \
   -d '{"name": "My Operation", "configId": "my-config.yaml"}'
 
 # Start an operation with custom mirror destination subdirectory
-curl -X POST http://localhost:3001/api/operations/start \
+curl -X POST http://localhost:3000/api/operations/start \
   -H "Content-Type: application/json" \
   -d '{"name": "My Operation", "configId": "my-config.yaml", "mirrorDestinationSubdir": "odf"}'
 
 # Get operation logs
-curl http://localhost:3001/api/operations/operation-123/logs
+curl http://localhost:3000/api/operations/operation-123/logs
 ```
 
 ### Using JavaScript
