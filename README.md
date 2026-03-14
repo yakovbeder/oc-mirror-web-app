@@ -30,7 +30,7 @@ chmod +x start-app.sh
 The script auto-detects your architecture (AMD64/ARM64), pulls the image from Quay.io, and starts the app.
 It validates `pull-secret/pull-secret.json` before launching the container.
 
-Open the URL printed by the script in your browser. By default it uses **http://localhost:3000**, but it automatically selects another free host port if `3000` is already in use.
+Open the URL printed by the script in your browser. By default it uses **http://localhost:3000**, but it automatically selects another free host port if `3000` is already in use. If a different port is chosen, use the `Web UI:` line printed by the script output.
 
 Manage with: `./start-app.sh --stop`, `./start-app.sh --restart`, `./start-app.sh --status`, `./start-app.sh --logs`.
 
@@ -103,7 +103,7 @@ Configure general preferences, registry credentials, proxy settings, and system 
 
 | | |
 |---|---|
-| **oc-mirror** | v2.x |
+| **oc-mirror** | v2 |
 | **OpenShift** | 4.16, 4.17, 4.18, 4.19, 4.20, 4.21 |
 | **Container runtime** | Podman 4.0+ |
 | **Architecture** | AMD64 (x86_64), ARM64 (aarch64) |
