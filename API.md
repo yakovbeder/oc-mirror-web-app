@@ -318,7 +318,7 @@ Get available operator catalogs.
 - `version` (optional): Filter by OCP version (4.16, 4.17, 4.18, 4.19, 4.20, 4.21)
 
 **Catalog Fetch Workflow:**
-- Catalog snapshots are produced by host-side fetch workflows such as `./fetch-catalogs-host.sh` or `./container-run.sh --fetch-catalogs`
+- Catalog snapshots are produced by host-side fetch workflows such as `./fetch-catalogs-host.sh` or any `./container-run.sh` build path
 - Each fetch run always performs a full pull of all supported catalogs; there is no freshness window or separate `--force` mode
 - The API serves the current local catalog snapshot available under `catalog-data/`
 

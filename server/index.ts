@@ -106,6 +106,9 @@ interface ChannelObject {
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const DIST_DIR = path.join(__dirname, '../dist');
+const DEV_INDEX_HTML = path.join(__dirname, '../index.html');
 
 app.use(compression());
 app.use(cors());
@@ -121,6 +124,7 @@ const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
 const APP_ROOT_DIR = process.env.OC_MIRROR_WORKDIR || path.resolve(__dirname, '..');
+const DEV_CACHE_DIR = path.join(APP_ROOT_DIR, '.local-run', 'vite');
 const MIRROR_BASE_DIR = path.resolve(process.env.OC_MIRROR_BASE_MIRROR_DIR || path.join(STORAGE_DIR, 'mirrors'));
 const DEFAULT_MIRROR_DIR = path.join(MIRROR_BASE_DIR, 'default');
 const CUSTOM_MIRROR_DIR = path.join(MIRROR_BASE_DIR, 'custom');
@@ -2067,21 +2071,43 @@ async function countFiles(dirPath: string): Promise<number> {
   return count;
 }
 
-app.use(express.static(path.join(__dirname, '../dist'), {
-  maxAge: '1d',
-  etag: true
-}));
+function configureProductionFrontend(): void {
+  app.use(express.static(DIST_DIR, {
+    maxAge: '1d',
+    etag: true
+  }));
 
-app.get('*', (req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
+  app.get('*', (req: Request, res: Response) => {
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+}
 
-app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Server error:', error);
-  res.status(500).json({ error: 'Internal server error' });
-});
+async function configureDevelopmentFrontend(): Promise<void> {
+  const { createServer } = await import('vite');
+  const vite = await createServer({
+    appType: 'custom',
+    cacheDir: DEV_CACHE_DIR,
+    server: {
+      middlewareMode: true
+    }
+  });
 
-app.listen(PORT, () => {
+  app.use(vite.middlewares);
+
+  app.get('*', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const template = await fsp.readFile(DEV_INDEX_HTML, 'utf8');
+      const html = await vite.transformIndexHtml(req.originalUrl, template);
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+    } catch (caughtError) {
+      const error = caughtError as Error;
+      vite.ssrFixStacktrace(error);
+      next(error);
+    }
+  });
+}
+
+function logStartup(): void {
   console.log(`OC Mirror Web App server running on port ${PORT}`);
   console.log(`Storage directory: ${STORAGE_DIR}`);
   console.log(`Configs directory: ${CONFIGS_DIR}`);
@@ -2093,4 +2119,30 @@ app.listen(PORT, () => {
   console.log(`Authfile path: ${AUTHFILE_PATH}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
   console.log(`API endpoints available at: http://localhost:${PORT}/api/*`);
+
+  if (!IS_PRODUCTION) {
+    console.log(`Development UI available at: http://localhost:${PORT}`);
+  }
+}
+
+async function startServer(): Promise<void> {
+  if (IS_PRODUCTION) {
+    configureProductionFrontend();
+  } else {
+    await configureDevelopmentFrontend();
+  }
+
+  app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
+    console.error('Server error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  });
+
+  app.listen(PORT, () => {
+    logStartup();
+  });
+}
+
+startServer().catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });

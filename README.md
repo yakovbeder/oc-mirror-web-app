@@ -39,16 +39,16 @@ Manage with: `./start-app.sh --stop`, `./start-app.sh --restart`, `./start-app.s
 ```bash
 chmod +x container-run.sh
 
-# First run: build with catalog fetching (required for operator data)
-./container-run.sh --fetch-catalogs
-
-# Subsequent runs (faster, uses the catalog data already downloaded to this machine)
+# Build and run locally (always fetches catalogs before the image build)
 ./container-run.sh
+
+# Build only, without starting the container
+./container-run.sh --build-only
 ```
 
 Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./container-run.sh --build-only`.
 
-When you use `--fetch-catalogs`, the host-side fetch always performs a full pull of all supported catalogs before the image build.
+Every `container-run.sh` build path performs the host-side catalog fetch before building the image. Use `./container-run.sh --run-only` only when you want to start an image that is already built locally.
 
 ### Updating operator catalogs
 

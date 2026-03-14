@@ -7,22 +7,25 @@
 set -e
 
 # Optional behavior flags (can be set via env vars or script args)
-# - BUILD_NO_CACHE=true  -> pass --no-cache to podman build
-# - FETCH_CATALOGS=true -> always refresh catalog-data before building
-# - FORCE_CATALOG_REFRESH=true -> legacy alias for FETCH_CATALOGS=true
-# - IMAGE_VERSION=4.3 -> set OCI image version label during build
-# - BUILD_VERSION=4.3 -> compatibility alias for IMAGE_VERSION
+# - BUILD_NO_CACHE=true -> pass --no-cache to podman build
+# - IMAGE_VERSION=4.3   -> set OCI image version label during build
+# - BUILD_VERSION=4.3   -> compatibility alias for IMAGE_VERSION
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-false}"
-FETCH_CATALOGS="${FETCH_CATALOGS:-false}"
 IMAGE_VERSION="${IMAGE_VERSION:-${BUILD_VERSION:-}}"
-
-if [ "${FORCE_CATALOG_REFRESH:-false}" = "true" ]; then
-    FETCH_CATALOGS="true"
-fi
 
 # Image name (use localhost/ prefix to prevent Podman from searching registries)
 IMAGE_NAME="localhost/oc-mirror-web-app"
 CONTAINER_NAME="oc-mirror-web-app"
+DEFAULT_WEB_PORT="3000"
+CONTAINER_PORT="3001"
+DATA_DIR="data"
+
+if [ -n "${WEB_PORT:-}" ]; then
+    WEB_PORT_WAS_SET="true"
+else
+    WEB_PORT_WAS_SET="false"
+    WEB_PORT="$DEFAULT_WEB_PORT"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -90,50 +93,98 @@ check_container_runtime() {
     print_success "$CONTAINER_ENGINE is available and running"
 }
 
+port_is_in_use() {
+    local port="$1"
+
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+        return $?
+    fi
+
+    if command -v nc >/dev/null 2>&1; then
+        nc -z 127.0.0.1 "$port" >/dev/null 2>&1
+        return $?
+    fi
+
+    return 1
+}
+
+find_available_port() {
+    local candidate_port="$1"
+
+    while port_is_in_use "$candidate_port"; do
+        candidate_port=$((candidate_port + 1))
+
+        if [ "$candidate_port" -gt 65535 ]; then
+            return 1
+        fi
+    done
+
+    echo "$candidate_port"
+}
+
+ensure_available_web_port() {
+    if ! port_is_in_use "$WEB_PORT"; then
+        return 0
+    fi
+
+    if [ "$WEB_PORT_WAS_SET" = "true" ]; then
+        print_error "Requested WEB_PORT $WEB_PORT is already in use"
+        print_error "Choose another port, for example: WEB_PORT=3002 ./container-run.sh --run-only"
+        exit 1
+    fi
+
+    local replacement_port
+    replacement_port="$(find_available_port "$((WEB_PORT + 1))")" || {
+        print_error "Unable to find a free host port for the web UI"
+        exit 1
+    }
+
+    print_warning "Host port $WEB_PORT is already in use. Using port $replacement_port instead."
+    WEB_PORT="$replacement_port"
+}
+
 # Create necessary directories and make them world-writable so both the
 # host user and the container user (UID 1000) can read/write without chown.
 create_directories() {
     print_status "Checking data directories..."
 
     mkdir -p \
-        data/configs \
-        data/operations \
-        data/logs \
-        data/cache \
-        data/mirrors/default \
+        "$DATA_DIR/configs" \
+        "$DATA_DIR/operations" \
+        "$DATA_DIR/logs" \
+        "$DATA_DIR/cache" \
+        "$DATA_DIR/mirrors/default" \
     2>/dev/null || {
         print_status "Fixing data/ permissions for directory creation..."
-        chmod -R 777 data/ 2>/dev/null || sudo chmod -R 777 data/
+        chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR"
         mkdir -p \
-            data/configs \
-            data/operations \
-            data/logs \
-            data/cache \
-            data/mirrors/default
+            "$DATA_DIR/configs" \
+            "$DATA_DIR/operations" \
+            "$DATA_DIR/logs" \
+            "$DATA_DIR/cache" \
+            "$DATA_DIR/mirrors/default"
     }
 
-    chmod -R 777 data/ 2>/dev/null || sudo chmod -R 777 data/ 2>/dev/null || true
+    chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR" 2>/dev/null || true
     print_success "Data directories are ready"
 }
 
-# Fetch catalogs on host when explicitly requested.
+# Fetch catalogs on host before every build.
 fetch_catalogs() {
-    if [ "$FETCH_CATALOGS" != "true" ]; then
-        print_status "Skipping catalog fetch (using existing catalog data)"
-        return 0
-    fi
-
     print_status "Fetching operator catalogs (this may take several minutes)..."
 
-    if [ -f "fetch-catalogs-host.sh" ]; then
-        chmod +x fetch-catalogs-host.sh
-        if ./fetch-catalogs-host.sh; then
-            print_success "Catalog fetch completed successfully"
-        else
-            print_warning "Catalog fetch failed; continuing with existing catalog-data if present"
-        fi
+    if [ ! -f "fetch-catalogs-host.sh" ]; then
+        print_error "Catalog fetch script not found: ./fetch-catalogs-host.sh"
+        exit 1
+    fi
+
+    chmod +x fetch-catalogs-host.sh
+    if ./fetch-catalogs-host.sh; then
+        print_success "Catalog fetch completed successfully"
     else
-        print_warning "Catalog fetch script not found; continuing without refreshing catalog-data"
+        print_error "Catalog fetch failed"
+        exit 1
     fi
 }
 
@@ -186,12 +237,41 @@ check_image_exists() {
     print_success "Image '$IMAGE_NAME' found locally"
 }
 
+is_container_running() {
+    $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"
+}
+
+container_exists() {
+    $CONTAINER_ENGINE ps -a --format "table {{.Names}}" | grep -q "^${CONTAINER_NAME}$"
+}
+
+get_running_web_port() {
+    if ! is_container_running; then
+        return 1
+    fi
+
+    local published_port
+    published_port="$($CONTAINER_ENGINE port "$CONTAINER_NAME" "$CONTAINER_PORT/tcp" 2>/dev/null | awk -F: 'NR==1 {print $NF}')"
+
+    if [ -n "$published_port" ]; then
+        echo "$published_port"
+        return 0
+    fi
+
+    return 1
+}
+
 # Run the container
 run_container() {
+    local requested_port="$WEB_PORT"
+    local bind_retry_limit=10
+    local bind_attempt=1
+
     print_status "Starting OC Mirror Web Application container with $CONTAINER_ENGINE..."
-    
+    ensure_available_web_port
+
     # Check if container is already running
-    if $CONTAINER_ENGINE ps --format "table {{.Names}}" | grep -q "$CONTAINER_NAME"; then
+    if is_container_running; then
         print_warning "Container is already running. Stopping it first..."
         # Try graceful stop with timeout
         if ! $CONTAINER_ENGINE stop -t 30 "$CONTAINER_NAME" 2>/dev/null; then
@@ -202,30 +282,84 @@ run_container() {
     fi
     
     # Also check for stopped container with same name
-    if $CONTAINER_ENGINE ps -a --format "table {{.Names}}" | grep -q "$CONTAINER_NAME"; then
+    if container_exists; then
         print_status "Removing stopped container..."
         $CONTAINER_ENGINE rm "$CONTAINER_NAME" 2>/dev/null || true
     fi
-    
-    # Run the container
-    $CONTAINER_ENGINE run -d \
-        --name "$CONTAINER_NAME" \
-        -p 3000:3001 \
-        -v "$(pwd)/data:/app/data:z" \
-        -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
-        -e NODE_ENV=production \
-        -e PORT=3001 \
-        -e STORAGE_DIR=/app/data \
-        -e OC_MIRROR_CACHE_DIR=/app/data/cache \
-        -e LOG_LEVEL=info \
-        --restart unless-stopped \
-        "$IMAGE_NAME"
-    
-    print_success "Container started successfully"
+
+    while [ "$bind_attempt" -le "$bind_retry_limit" ]; do
+        local run_output
+
+        print_status "Web UI: http://localhost:$WEB_PORT"
+        print_status "API: http://localhost:$WEB_PORT/api"
+
+        set +e
+        run_output="$($CONTAINER_ENGINE run -d \
+            --name "$CONTAINER_NAME" \
+            -p "$WEB_PORT:$CONTAINER_PORT" \
+            -v "$(pwd)/$DATA_DIR:/app/data:z" \
+            -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
+            -e NODE_ENV=production \
+            -e PORT="$CONTAINER_PORT" \
+            -e STORAGE_DIR=/app/data \
+            -e OC_MIRROR_CACHE_DIR=/app/data/cache \
+            -e LOG_LEVEL=info \
+            --restart unless-stopped \
+            "$IMAGE_NAME" 2>&1)"
+        local run_status=$?
+        set -e
+
+        if [ "$run_status" -eq 0 ]; then
+            echo "$run_output"
+            print_success "Container started successfully"
+            return 0
+        fi
+
+        if container_exists; then
+            $CONTAINER_ENGINE rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        fi
+
+        if echo "$run_output" | grep -qiE 'address already in use|port is already allocated'; then
+            if [ "$WEB_PORT_WAS_SET" = "true" ]; then
+                print_error "Requested WEB_PORT $WEB_PORT is unavailable to Podman"
+                print_error "Choose another port, for example: WEB_PORT=3002 ./container-run.sh --run-only"
+                exit 1
+            fi
+
+            if [ "$bind_attempt" -eq "$bind_retry_limit" ]; then
+                print_error "Failed to find a usable host port after $bind_retry_limit attempts starting at $requested_port"
+                exit 1
+            fi
+
+            print_warning "Podman could not bind host port $WEB_PORT. Trying the next available port..."
+            WEB_PORT="$(find_available_port "$((WEB_PORT + 1))")" || {
+                print_error "Unable to find a free host port for the web UI"
+                exit 1
+            }
+            bind_attempt=$((bind_attempt + 1))
+            continue
+        fi
+
+        echo "$run_output"
+        print_error "Failed to start container"
+        exit 1
+    done
 }
 
 # Show status
 show_status() {
+    if ! is_container_running; then
+        print_warning "Application is not running"
+        print_status "Start it with: ./container-run.sh"
+        return 0
+    fi
+
+    local active_web_port
+    active_web_port="$(get_running_web_port || true)"
+    if [ -z "$active_web_port" ]; then
+        active_web_port="$WEB_PORT"
+    fi
+
     echo ""
     echo "=========================================="
     echo "  OC Mirror v2 Web Application"
@@ -233,11 +367,11 @@ show_status() {
     echo ""
     print_success "Application is running!"
     echo ""
-    echo "🌐 Web Interface: http://localhost:3000"
-    echo "🔧 API Server: http://localhost:3000/api (proxied through web interface)"
+    echo "🌐 Web Interface: http://localhost:$active_web_port"
+    echo "🔧 API Server: http://localhost:$active_web_port/api (proxied through web interface)"
     echo ""
-    echo "📁 Data Directory: $(pwd)/data"
-    echo "📦 Mirror Storage: $(pwd)/data/mirrors/default → /app/data/mirrors/default (persistent)"
+    echo "📁 Data Directory: $(pwd)/$DATA_DIR"
+    echo "📦 Mirror Storage: $(pwd)/$DATA_DIR/mirrors/default → /app/data/mirrors/default (persistent)"
     echo "📋 Container Name: $CONTAINER_NAME"
     echo "🐳 Image Name: $IMAGE_NAME"
     echo "🔧 Container Engine: $CONTAINER_ENGINE"
@@ -266,32 +400,29 @@ show_help() {
     echo "  --logs              Show container logs"
     echo "  --status            Show container status"
     echo "  --engine            Show detected container engine"
-    echo "  --fetch-catalogs    Always fetch operator catalogs during build"
-    echo "  --force-catalogs    Legacy alias for --fetch-catalogs"
     echo "  --no-cache          Rebuild the container image without using cache"
     echo "  --version VERSION   Set OCI image version label during build"
     echo ""
     echo "Environment Variables:"
-    echo "  FETCH_CATALOGS=true         Always fetch operator catalogs during build"
-    echo "  FORCE_CATALOG_REFRESH=true Legacy alias for FETCH_CATALOGS=true"
     echo "  BUILD_NO_CACHE=true        Disable build cache when building the container image"
     echo "  IMAGE_VERSION=4.3          Set OCI image version label during build"
     echo "  BUILD_VERSION=4.3          Compatibility alias for IMAGE_VERSION"
+    echo "  WEB_PORT=$DEFAULT_WEB_PORT            Override the host port used for the web UI"
     echo ""
     echo "Examples:"
     echo "  $0"
     echo "  $0 --build-only"
-    echo "  $0 --fetch-catalogs"
     echo "  $0 --build-only --version 4.3"
-    echo "  $0 --build-only --fetch-catalogs --no-cache"
+    echo "  $0 --build-only --no-cache"
+    echo "  WEB_PORT=3002 $0 --run-only"
     echo ""
     echo "Container Engine Support:"
     echo "  - Podman (required)"
     echo ""
     echo "Catalog Fetching:"
-    echo "  By default, the build process skips catalog fetching for faster builds."
-    echo "  Use --fetch-catalogs to always run the host-side catalog fetch before the image build."
-    echo "  --force-catalogs remains accepted as a legacy alias."
+    echo "  Every build path runs the host-side catalog fetch before the image build."
+    echo "  Use --run-only only when you want to start an image that is already built locally."
+    echo "  If port 3000 is busy, the script automatically picks the next free host port."
 }
 
 # Build image without running the container
@@ -306,12 +437,7 @@ build_only() {
     detect_system_architecture
     create_directories
 
-    if [ "$FETCH_CATALOGS" = "true" ]; then
-        fetch_catalogs
-    else
-        print_status "Skipping catalog fetch (using existing catalog data)"
-    fi
-
+    fetch_catalogs
     build_image
     print_success "Image built successfully. Run with: $0 --run-only"
 }
@@ -361,14 +487,6 @@ parse_arguments() {
                 set_action "engine"
                 shift
                 ;;
-            --fetch-catalogs)
-                FETCH_CATALOGS=true
-                shift
-                ;;
-            --force-catalogs)
-                FETCH_CATALOGS=true
-                shift
-                ;;
             --no-cache)
                 BUILD_NO_CACHE=true
                 shift
@@ -402,16 +520,11 @@ main() {
     check_container_runtime
     detect_system_architecture
     create_directories
-    
-    # Only fetch catalogs if explicitly requested
-    if [ "$FETCH_CATALOGS" = "true" ]; then
-        fetch_catalogs
-    else
-        print_status "Skipping catalog fetch (using existing catalog data)"
-    fi
-    
+
+    fetch_catalogs
     build_image
     run_container
+    sleep 2
     show_status
 }
 
@@ -433,6 +546,7 @@ case "$ACTION" in
         create_directories
         check_image_exists
         run_container
+        sleep 2
         show_status
         exit 0
         ;;
@@ -466,6 +580,7 @@ case "$ACTION" in
         ;;
     status)
         detect_container_runtime
+        detect_system_architecture
         show_status
         exit 0
         ;;
