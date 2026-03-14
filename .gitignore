@@ -96,5 +96,6 @@ catalog-data/*
 # Development-only runtime and audit artifacts
 .local-run/
 audit-reports/
+mirror/
 start-local.sh
 scripts/audit-fetch-catalogs.mjs
