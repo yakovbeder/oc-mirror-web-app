@@ -9,7 +9,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 # Configuration
-IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
+if [ -n "${IMAGE_NAME:-}" ]; then
+    IMAGE_NAME_WAS_SET="true"
+else
+    IMAGE_NAME_WAS_SET="false"
+    IMAGE_NAME="quay.io/rh-ee-ybeder/oc-mirror-web-app"
+fi
 CONTAINER_NAME="oc-mirror-web-app"
 DEFAULT_WEB_PORT="3000"
 CONTAINER_PORT="3001"
@@ -222,6 +227,11 @@ create_data_directories() {
 
 # Pull image
 pull_image() {
+    if [ "$IMAGE_NAME_WAS_SET" = "true" ] && $CONTAINER_ENGINE image exists "${IMAGE_NAME}:latest-${ARCH}" 2>/dev/null; then
+        print_success "Using local image (IMAGE_NAME override), skipping pull"
+        return 0
+    fi
+
     local image_tag="${IMAGE_NAME}:latest-${ARCH}"
     print_status "Pulling image: $image_tag"
     
@@ -443,7 +453,8 @@ main() {
             echo "  --help, -h - Show this help message"
             echo ""
             echo "Environment:"
-            echo "  WEB_PORT  - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
+            echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
+            echo "  IMAGE_NAME - Override the container image (default: quay.io/rh-ee-ybeder/oc-mirror-web-app)"
             exit 0
             ;;
         *)

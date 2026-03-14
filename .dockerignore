@@ -30,3 +30,6 @@ data/operations/
 # Exclude mirror content (contains large generated files)
 data/mirrors/*
 !data/mirrors/.gitkeep
+
+# Exclude raw catalog configs from the build context; runtime uses generated metadata only
+catalog-data/**/configs/

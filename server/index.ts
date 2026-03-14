@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import compression from 'compression';
 import multer from 'multer';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { getChannelObjectsFromGeneratedOperator } from './catalogChannels.js';
 
 const fsp = fs.promises;
 
@@ -485,75 +486,17 @@ async function getActualChannelsFromCatalog(catalogType: string, catalogVersion:
       
       if (operators) {
         const operator = operators.find(op => op.name === operatorName);
-        if (operator) {
-          const channels: ChannelObject[] = [];
-          if (operator.channels && Array.isArray(operator.channels)) {
-            operator.channels.forEach((channelName: string | { name: string }) => {
-              if (typeof channelName === 'string') {
-                channels.push({ name: channelName });
-              }
-            });
-          }
-          
-          console.log(`Found ${channels.length} channels for ${operatorName} in ${catalogType}:${catalogVersion} using pre-fetched data`);
+        const channels = getChannelObjectsFromGeneratedOperator(operator);
+        if (channels) {
+          console.log(`Found ${channels.length} channels for ${operatorName} in ${catalogType}:${catalogVersion} using generated metadata`);
           return channels;
+        }
       }
     }
-  }
 
-  const catalogPath = path.join(__dirname, `../catalog-data/${catalogType}/${catalogVersion}/configs/${operatorName}/catalog.json`);
-
-  try {
-      await fsp.access(catalogPath);
-    } catch (error: any) {
-      console.log(`Catalog file not found for ${operatorName} in ${catalogType}:${catalogVersion}`);
     return null;
-  }
-
-  const catalogContent = await fsp.readFile(catalogPath, 'utf8');
-  const channels: ChannelObject[] = [];
-  const jsonObjects = catalogContent.split('}{');
-    
-  for (let i = 0; i < jsonObjects.length; i++) {
-    let jsonStr = jsonObjects[i];
-
-    if (i === 0) {
-      jsonStr += '}';
-    } else if (i === jsonObjects.length - 1) {
-      jsonStr = '{' + jsonStr;
-    } else {
-      jsonStr = '{' + jsonStr + '}';
-    }
-      
-    try {
-      const obj = JSON.parse(jsonStr);
-      if (obj.schema === 'olm.channel' && obj.name) {
-          channels.push({ name: obj.name });
-        }
-      } catch (parseError: any) {
-        continue;
-    }
-  }
-
-  if (channels.length === 0) {
-      try {
-        const singleObj = JSON.parse(catalogContent);
-        if (singleObj.schema === 'olm.channel' && singleObj.name) {
-          channels.push({ name: singleObj.name });
-        }
-      } catch (singleParseError: any) {
-      }
-  }
-
-  const uniqueChannels = channels.filter((channel, index, self) =>
-      index === self.findIndex(c => c.name === channel.name)
-    );
-    
-    console.log(`Found ${uniqueChannels.length} channels for ${operatorName} in ${catalogType}:${catalogVersion} using file reading`);
-    return uniqueChannels;
-    
   } catch (error: any) {
-    console.error(`Error reading catalog data for ${operatorName} in ${catalogType}:${catalogVersion}:`, error.message);
+    console.error(`Error reading generated catalog data for ${operatorName} in ${catalogType}:${catalogVersion}:`, error.message);
     return null;
   }
 }

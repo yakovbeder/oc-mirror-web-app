@@ -19,6 +19,16 @@ RUN npm config set fetch-timeout 300000 && \
     fi
 
 COPY . .
+RUN mkdir -p /app/catalog-data-minimal && \
+    (cp /app/catalog-data/catalog-index.json /app/catalog-data-minimal/ 2>/dev/null || \
+     echo '{"generated_at":"","ocp_versions":[],"catalog_types":[],"catalogs":[]}' > /app/catalog-data-minimal/catalog-index.json) && \
+    (cp /app/catalog-data/dependencies.json /app/catalog-data-minimal/ 2>/dev/null || \
+     echo '{}' > /app/catalog-data-minimal/dependencies.json) && \
+    find /app/catalog-data -type f \( -name "operators.json" -o -name "dependencies.json" \) ! -path "*/configs/*" 2>/dev/null | while read file; do \
+      rel_path=$(echo "$file" | sed 's|/app/catalog-data/||'); \
+      mkdir -p "/app/catalog-data-minimal/$(dirname "$rel_path")"; \
+      cp "$file" "/app/catalog-data-minimal/$rel_path"; \
+    done
 RUN npx vite build
 
 FROM node:22-slim AS production
@@ -82,19 +92,8 @@ RUN npm config set fetch-timeout 300000 && \
 COPY --from=builder /app/dist ./dist
 COPY server ./server
 
-# Copy only essential catalog files (~2.4MB) instead of full configs (~2.4GB)
-COPY --from=builder /app/catalog-data /tmp/builder-catalog
-RUN mkdir -p ./catalog-data && \
-    (cp /tmp/builder-catalog/catalog-index.json ./catalog-data/ 2>/dev/null || \
-     echo '{"generated_at":"","ocp_versions":[],"catalog_types":[],"catalogs":[]}' > ./catalog-data/catalog-index.json) && \
-    (cp /tmp/builder-catalog/dependencies.json ./catalog-data/ 2>/dev/null || \
-     echo '{}' > ./catalog-data/dependencies.json) && \
-    find /tmp/builder-catalog -type f \( -name "operators.json" -o -name "dependencies.json" \) ! -path "*/configs/*" 2>/dev/null | while read file; do \
-      rel_path=$(echo "$file" | sed 's|/tmp/builder-catalog/||'); \
-      mkdir -p "./catalog-data/$(dirname "$rel_path")"; \
-      cp "$file" "./catalog-data/$rel_path"; \
-    done && \
-    rm -rf /tmp/builder-catalog
+# Copy only generated catalog metadata required at runtime.
+COPY --from=builder /app/catalog-data-minimal ./catalog-data
 
 RUN mkdir -p /app/data && chown -R node:node /app
 
