@@ -10,11 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_JSON="${SCRIPT_DIR}/package.json"
 LOG_DIR="${SCRIPT_DIR}/logs/cron"
 LOG_FILE="${LOG_DIR}/build-$(date +%Y%m%d-%H%M%S).log"
-FORCE_CATALOG_REFRESH="${FORCE_CATALOG_REFRESH:-true}"
 
 read_project_version() {
     if [ ! -f "${PACKAGE_JSON}" ]; then
-        echo "4.2"
+        echo "4.3"
         return 0
     fi
 
@@ -24,7 +23,7 @@ read_project_version() {
     if [ -n "${package_version}" ]; then
         echo "${package_version}"
     else
-        echo "4.2"
+        echo "4.3"
     fi
 }
 
@@ -40,8 +39,6 @@ log() {
 
 # Main execution
 main() {
-    local fetch_args=()
-
     log "=========================================="
     log "Starting daily build process"
     log "Version: ${VERSION}"
@@ -51,14 +48,9 @@ main() {
     cd "${SCRIPT_DIR}"
     
     # Step 1: Fetch catalogs
-    if [ "${FORCE_CATALOG_REFRESH}" = "true" ]; then
-        fetch_args+=(--force)
-        log "Step 1: Fetching operator catalogs with forced refresh..."
-    else
-        log "Step 1: Fetching operator catalogs..."
-    fi
+    log "Step 1: Fetching operator catalogs..."
 
-    if ./fetch-catalogs-host.sh "${fetch_args[@]}" >> "${LOG_FILE}" 2>&1; then
+    if ./fetch-catalogs-host.sh >> "${LOG_FILE}" 2>&1; then
         log "✓ Catalog fetch completed successfully"
     else
         log "✗ Catalog fetch failed!"

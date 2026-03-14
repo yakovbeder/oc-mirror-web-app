@@ -11,7 +11,7 @@ PACKAGE_JSON="${PROJECT_DIR}/package.json"
 
 read_package_version() {
     if [ ! -f "${PACKAGE_JSON}" ]; then
-        echo "4.2"
+        echo "4.3"
         return 0
     fi
 
@@ -21,7 +21,7 @@ read_package_version() {
     if [ -n "${package_version}" ]; then
         echo "${package_version}"
     else
-        echo "4.2"
+        echo "4.3"
     fi
 }
 
@@ -200,8 +200,8 @@ show_usage() {
       echo
       echo "Examples:"
       echo "  $0                    # Build and push with default version"
-      echo "  $0 --tag v4.2         # Build and push with custom tag"
-      echo "  $0 --version 4.2      # Build and push with custom version"
+      echo "  $0 --tag v4.3         # Build and push with custom tag"
+      echo "  $0 --version 4.3      # Build and push with custom version"
       echo "  $0 --no-cleanup       # Build and push without cleanup"
 }
 

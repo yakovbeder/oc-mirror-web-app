@@ -98,7 +98,7 @@ const AppLayout: React.FC = () => {
               </div>
             </ToolbarItem>
             <ToolbarItem align={{ default: 'alignEnd' }}>
-              <Label color="blue">v4.2</Label>
+              <Label color="blue">v4.3</Label>
             </ToolbarItem>
           </ToolbarContent>
         </Toolbar>

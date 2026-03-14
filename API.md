@@ -1,22 +1,24 @@
 # OC Mirror v2 Web Application - API Documentation
 
-**Current Version: v4.2**
+**Current Version: v4.3**
 
 ## Overview
 
-The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift Container Platform mirroring operations. All endpoints are available at `http://localhost:3001/api/` when the application is running.
+The OC Mirror v2 Web Application provides a RESTful API for managing OpenShift Container Platform mirroring operations. In default direct/local runs, the API is available at `http://localhost:3001/api/`. When the app is started with `./start-app.sh`, use the host port reported by the script and append `/api`.
 
 ### Key Features
 - **Archive Size Control**: Optional `archiveSize` parameter to limit archive file sizes (in GiB)
 - **Persistent Mirror Storage**: Mirror archives are saved to host filesystem and survive container restarts
 - **Custom Mirror Destinations**: Optional subdirectory specification for organized mirror storage
 - **Health Monitoring**: Dedicated health check endpoint for container orchestration
-- **OCP Versions**: Supports OpenShift Container Platform versions 4.16, 4.17, 4.18, 4.19, and 4.20
+- **OCP Versions**: Supports OpenShift Container Platform versions 4.16, 4.17, 4.18, 4.19, 4.20, and 4.21
 
 ## Base URL
 ```
 http://localhost:3001/api
 ```
+
+For containerized runs started via `./start-app.sh`, the frontend proxies the API on the selected host port, for example `http://localhost:3000/api` or another port if `3000` is already occupied.
 
 ## Authentication
 Currently, the API does not require authentication. All endpoints are accessible without credentials.
@@ -49,7 +51,7 @@ The application includes comprehensive validation for configuration parameters:
 - **Platform Channels**: Validates that min/max versions are compatible with the selected channel
 - **Operator Channels**: Validates version ranges against available operator versions
 - **Auto-correction**: Automatically fixes invalid ranges (min > max scenarios)
-- **Channel Compatibility**: Ensures versions match channel major.minor versions (e.g., `stable-4.19` requires `4.19.x` versions)
+- **Channel Compatibility**: Ensures versions match channel major.minor versions (e.g., `stable-4.21` requires `4.21.x` versions)
 
 ### Validation Triggers
 - **Platform Channels**: Validation triggers on `onBlur` events (when user finishes typing)
@@ -58,25 +60,25 @@ The application includes comprehensive validation for configuration parameters:
 
 ### Validation Examples
 ```json
-// Valid configuration for stable-4.19 channel
+// Valid configuration for stable-4.21 channel
 {
-  "channel": "stable-4.19",
-  "minVersion": "4.19.1",
-  "maxVersion": "4.19.9"
+  "channel": "stable-4.21",
+  "minVersion": "4.21.1",
+  "maxVersion": "4.21.9"
 }
 
 // Invalid configuration - version mismatch
 {
-  "channel": "stable-4.19", 
-  "minVersion": "4.18.1",  // ❌ Wrong major.minor version
-  "maxVersion": "4.19.9"
+  "channel": "stable-4.21", 
+  "minVersion": "4.20.1",  // ❌ Wrong major.minor version
+  "maxVersion": "4.21.9"
 }
 
 // Invalid configuration - min > max
 {
-  "channel": "stable-4.19",
-  "minVersion": "4.19.9",  // ❌ Greater than max
-  "maxVersion": "4.19.1"   // ❌ Less than min
+  "channel": "stable-4.21",
+  "minVersion": "4.21.9",  // ❌ Greater than max
+  "maxVersion": "4.21.1"   // ❌ Less than min
 }
 ```
 
@@ -90,8 +92,9 @@ Health check endpoint for container orchestration and monitoring.
 **Response:**
 ```json
 {
-  "status": "ok",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "service": "oc-mirror-web-app"
 }
 ```
 
@@ -235,7 +238,7 @@ Upload a YAML configuration file.
 ```json
 {
   "filename": "my-config.yaml",
-  "content": "kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  operators:\n  - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.19\n    packages:\n    - name: advanced-cluster-management"
+  "content": "kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  operators:\n  - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.21\n    packages:\n    - name: advanced-cluster-management"
 }
 ```
 
@@ -312,7 +315,12 @@ Get available OpenShift Container Platform channels.
 Get available operator catalogs.
 
 **Query Parameters:**
-- `version` (optional): Filter by OCP version (4.16, 4.17, 4.18, 4.19, 4.20)
+- `version` (optional): Filter by OCP version (4.16, 4.17, 4.18, 4.19, 4.20, 4.21)
+
+**Catalog Fetch Workflow:**
+- Catalog snapshots are produced by host-side fetch workflows such as `./fetch-catalogs-host.sh` or `./container-run.sh --fetch-catalogs`
+- Each fetch run always performs a full pull of all supported catalogs; there is no freshness window or separate `--force` mode
+- The API serves the current local catalog snapshot available under `catalog-data/`
 
 **Response:**
 ```json
@@ -323,21 +331,21 @@ Get available operator catalogs.
       "name": "redhat-operator-index",
       "url": "registry.redhat.io/redhat/redhat-operator-index",
       "description": "Red Hat certified operators",
-      "ocpVersion": "4.20",
+      "ocpVersion": "4.21",
       "type": "redhat"
     },
     {
       "name": "certified-operator-index",
       "url": "registry.redhat.io/redhat/certified-operator-index",
       "description": "Certified operators",
-      "ocpVersion": "4.20",
+      "ocpVersion": "4.21",
       "type": "certified"
     },
     {
       "name": "community-operator-index",
       "url": "registry.redhat.io/redhat/community-operator-index",
       "description": "Community operators",
-      "ocpVersion": "4.20",
+      "ocpVersion": "4.21",
       "type": "community"
     }
   ]
@@ -350,6 +358,7 @@ Get available operator catalogs.
 - 4.18
 - 4.19
 - 4.20
+- 4.21
 
 #### GET /api/operators
 Get available operators from catalogs.
@@ -411,21 +420,21 @@ Get available versions for a specific operator.
 Get channels for an operator from a specific catalog (batch query).
 
 **Query Parameters:**
-- `catalogUrl` (required): Full catalog URL (e.g., `registry.redhat.io/redhat/redhat-operator-index:v4.19`)
+- `catalogUrl` (required): Full catalog URL (e.g., `registry.redhat.io/redhat/redhat-operator-index:v4.21`)
 - `operatorName` (required): Operator package name
 
 **Response:**
 ```json
 [
   {
-    "name": "stable-v4.19",
+    "name": "stable-v4.21",
     "availableVersions": ["4.19.0", "4.19.1", "4.19.2"]
   }
 ]
 ```
 
 #### POST /api/operators/refresh-cache
-Force refresh of the operator cache. Clears the cached data and re-fetches from catalog sources.
+Reload the in-memory operator cache from the current local catalog snapshot or fallback sources. This does not pull fresh catalogs from remote registries.
 
 **Response:**
 ```json
@@ -445,7 +454,7 @@ Get dependencies for a specific operator.
 
 **Example Request:**
 ```bash
-curl "http://localhost:3001/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.18"
+curl "http://localhost:3001/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.21"
 ```
 
 **Response:**
