@@ -217,7 +217,7 @@ create_data_directories() {
     }
 
     chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR" 2>/dev/null || true
-    print_success "Data directories are ready (world-writable for container compatibility)"
+    print_success "Data directories are ready"
 }
 
 # Pull image

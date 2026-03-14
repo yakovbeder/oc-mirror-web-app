@@ -113,7 +113,7 @@ create_directories() {
     }
 
     chmod -R 777 data/ 2>/dev/null || sudo chmod -R 777 data/ 2>/dev/null || true
-    print_success "Data directories are ready (world-writable for container compatibility)"
+    print_success "Data directories are ready"
 }
 
 # Fetch catalogs on host when explicitly requested.
@@ -305,7 +305,6 @@ build_only() {
     check_container_runtime
     detect_system_architecture
     create_directories
-    fix_permissions
 
     if [ "$FETCH_CATALOGS" = "true" ]; then
         fetch_catalogs
@@ -403,7 +402,6 @@ main() {
     check_container_runtime
     detect_system_architecture
     create_directories
-    fix_permissions
     
     # Only fetch catalogs if explicitly requested
     if [ "$FETCH_CATALOGS" = "true" ]; then
