@@ -50,17 +50,6 @@ Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./contai
 
 Every `container-run.sh` build path performs the host-side catalog fetch before building the image. Use `./container-run.sh --run-only` only when you want to start an image that is already built locally.
 
-### Updating operator catalogs
-
-The pre-built images ship with operator catalog data for OCP 4.16-4.21. To refresh catalogs with the latest operator versions, run:
-
-```bash
-chmod +x fetch-catalogs-host.sh
-./fetch-catalogs-host.sh
-```
-
-This fetches real catalog data from Red Hat, Certified, and Community operator indexes directly on the host using Podman. Each run performs a full pull of all supported catalogs and rewrites the local `catalog-data/` snapshot. After fetching, rebuild the container with `./container-run.sh` to include the updated data.
-
 ---
 
 ## Features
