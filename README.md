@@ -39,16 +39,19 @@ Manage with: `./start-app.sh --stop`, `./start-app.sh --restart`, `./start-app.s
 ```bash
 chmod +x container-run.sh
 
-# Build and run locally (always fetches catalogs before the image build)
+# Build and run locally (fetches catalogs, builds image, starts container)
 ./container-run.sh
 
 # Build only, without starting the container
 ./container-run.sh --build-only
+
+# Run a previously built image without rebuilding or fetching catalogs
+./container-run.sh --run-only
 ```
 
-Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./container-run.sh --build-only`.
+Every build path runs `fetch-catalogs-host.sh` to pull the latest Red Hat, Certified, and Community operator catalogs (OCP 4.16-4.21) before building the image. Use `--run-only` to skip fetching and building when you already have a local image.
 
-Every `container-run.sh` build path performs the host-side catalog fetch before building the image. Use `./container-run.sh --run-only` only when you want to start an image that is already built locally.
+Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./container-run.sh --status`.
 
 ---
 
