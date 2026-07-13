@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **This repository is archived.**
+>
+> Development continues at **[openshift/mirror-gui](https://github.com/openshift/mirror-gui)**, the repository officially supported by Red Hat.
+>
+> Please use that repository for new issues, pull requests, and ongoing development.
+
 # OC Mirror v2 Web Application
 
 A modern web-based interface for managing OpenShift Container Platform mirroring operations using oc-mirror v2. Create, manage, and execute mirror configurations without command-line expertise.
